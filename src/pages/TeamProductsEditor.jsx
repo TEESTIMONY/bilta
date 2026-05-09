@@ -269,6 +269,12 @@ function TeamProductsEditor() {
 
   function handleReset() {
     clearTeamProductsStorage()
+    if (USE_DJANGO_API) {
+      setProducts([])
+      setStatus('Local product fallback has been cleared. This page now shows only backend products.')
+      return
+    }
+
     setProducts(defaultProducts)
     setStatus('Team override cleared. App will use CMS/local source again.')
   }
@@ -373,53 +379,71 @@ function TeamProductsEditor() {
               Swipe sideways to see the full product table and quick actions on mobile.
             </div>
 
-            <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
-              <table className="w-full min-w-[980px] text-left text-sm">
-                <thead className="bg-slate-100 text-xs uppercase tracking-[0.12em] text-slate-600">
-                  <tr>
-                    <th className="px-3 py-3">S/N</th>
-                    <th className="px-3 py-3">Title</th>
-                    <th className="px-3 py-3">Slug</th>
-                    <th className="px-3 py-3">Category</th>
-                    <th className="px-3 py-3">Price</th>
-                    <th className="px-3 py-3">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visibleProducts.map(({ product, index }, rowIndex) => (
-                    <tr
-                      key={`table-${product.slug}-${index}`}
-                      onClick={() => handleSelectProductRow(index)}
-                      className={`cursor-pointer border-t border-slate-100 transition hover:bg-slate-50 ${
-                        selectedProductIndex === index ? 'bg-navy/5' : ''
-                      }`}
-                    >
-                      <td className="px-3 py-3 font-semibold text-slate-700">{rowIndex + 1}</td>
-                      <td className="px-3 py-3 font-semibold text-slate-900">{product.title || 'Untitled product'}</td>
-                      <td className="px-3 py-3 text-slate-600">{product.slug || '-'}</td>
-                      <td className="px-3 py-3">{product.category || '-'}</td>
-                      <td className="px-3 py-3">{product.price || '-'}</td>
-                      <td className="px-3 py-3 whitespace-nowrap">
-                        <div className="flex items-center gap-2 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                          <button
-                            onClick={() => handleSelectProductRow(index)}
-                            className="rounded-md border border-navy px-2.5 py-1 text-xs font-semibold text-navy transition hover:bg-navy hover:text-white"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => askRemoveProduct(index)}
-                            className="rounded-md border border-red-300 px-2.5 py-1 text-xs font-semibold text-red-600 transition hover:bg-red-50"
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </td>
+            {visibleProducts.length ? (
+              <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
+                <table className="w-full min-w-[980px] text-left text-sm">
+                  <thead className="bg-slate-100 text-xs uppercase tracking-[0.12em] text-slate-600">
+                    <tr>
+                      <th className="px-3 py-3">S/N</th>
+                      <th className="px-3 py-3">Title</th>
+                      <th className="px-3 py-3">Slug</th>
+                      <th className="px-3 py-3">Category</th>
+                      <th className="px-3 py-3">Price</th>
+                      <th className="px-3 py-3">Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {visibleProducts.map(({ product, index }, rowIndex) => (
+                      <tr
+                        key={`table-${product.slug}-${index}`}
+                        onClick={() => handleSelectProductRow(index)}
+                        className={`cursor-pointer border-t border-slate-100 transition hover:bg-slate-50 ${
+                          selectedProductIndex === index ? 'bg-navy/5' : ''
+                        }`}
+                      >
+                        <td className="px-3 py-3 font-semibold text-slate-700">{rowIndex + 1}</td>
+                        <td className="px-3 py-3 font-semibold text-slate-900">{product.title || 'Untitled product'}</td>
+                        <td className="px-3 py-3 text-slate-600">{product.slug || '-'}</td>
+                        <td className="px-3 py-3">{product.category || '-'}</td>
+                        <td className="px-3 py-3">{product.price || '-'}</td>
+                        <td className="px-3 py-3 whitespace-nowrap">
+                          <div className="flex items-center gap-2 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              onClick={() => handleSelectProductRow(index)}
+                              className="rounded-md border border-navy px-2.5 py-1 text-xs font-semibold text-navy transition hover:bg-navy hover:text-white"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => askRemoveProduct(index)}
+                              className="rounded-md border border-red-300 px-2.5 py-1 text-xs font-semibold text-red-600 transition hover:bg-red-50"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="rounded-lg border border-slate-200 bg-white px-5 py-8 text-center shadow-sm">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                  Product Catalog
+                </p>
+                <h2 className="mt-2 text-2xl font-extrabold text-slate-900">
+                  No products have been added yet.
+                </h2>
+                <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-slate-600">
+                  This page now reflects your real backend catalog. Add your first product to start
+                  building the shop.
+                </p>
+                <button onClick={openAddModal} className="btn-primary mt-5">
+                  Add First Product
+                </button>
+              </div>
+            )}
 
             {isEditModalOpen && selectedProduct ? (
               <div className="fixed inset-0 z-[75] bg-slate-950/60 p-4 backdrop-blur-md">
