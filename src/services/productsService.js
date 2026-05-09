@@ -62,24 +62,13 @@ function toApiProductPayload(item) {
 
 async function getProductsFromDjango() {
   const items = await fetchAllPages(`${DJANGO_API_BASE}/products/`)
-  let products = normalizeProducts(items)
-
-  // Bootstrap: if API is enabled but empty, seed it from bundled local products once.
-  if (!products.length && localProducts.length) {
-    try {
-      await upsertProductsToDjango(localProducts)
-      const seededItems = await fetchAllPages(`${DJANGO_API_BASE}/products/`)
-      products = normalizeProducts(seededItems)
-    } catch (error) {
-      console.warn('[productsService] Django bootstrap seed failed:', error)
-    }
-  }
+  const products = normalizeProducts(items)
 
   if (!products.length) {
     return {
-      products: localProducts,
-      filters: localFilters,
-      source: 'django-empty-local-fallback',
+      products: [],
+      filters: deriveFiltersFromProducts([]),
+      source: 'django-empty',
     }
   }
 
@@ -179,7 +168,11 @@ export async function getProductsData() {
       return await getProductsFromDjango()
     } catch (error) {
       console.warn('[productsService] Django API fetch failed:', error)
-      return { products: localProducts, filters: localFilters, source: 'django-error-local-fallback' }
+      return {
+        products: [],
+        filters: deriveFiltersFromProducts([]),
+        source: 'django-error',
+      }
     }
   }
 

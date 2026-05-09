@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import TeamNavbar from '../components/TeamNavbar'
 import Footer from '../components/Footer'
 import { filters as defaultFilters, products as defaultProducts } from '../data/productsData'
+import { USE_DJANGO_API } from '../services/api'
 import { clearTeamProductsStorage, getProductsData, saveTeamProducts } from '../services/productsService'
 
 const blankProduct = {
@@ -64,6 +65,11 @@ function TeamProductsEditor() {
     async function loadEditorData() {
       const data = await getProductsData()
       if (!isMounted) return
+
+      if (USE_DJANGO_API) {
+        setProducts(data.products || [])
+        return
+      }
 
       setProducts(data.products?.length ? data.products : defaultProducts)
     }

@@ -113,6 +113,9 @@ function Products() {
     )
   }, [activeFilter, deferredSearchTerm, products])
 
+  const hasActiveSearch = deferredSearchTerm.trim().length > 0
+  const hasCatalogProducts = products.length > 0
+
   const groupedProducts = useMemo(() => {
     const order = filters.filter((item) => item !== 'All Products')
 
@@ -324,28 +327,33 @@ function Products() {
               ) : (
                 <div className="shop-empty-state" data-shop-reveal>
                   <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
-                    No matches found
+                    {hasCatalogProducts ? 'No matches found' : 'Catalog coming soon'}
                   </p>
                   <h2 className="mt-2 text-2xl font-extrabold text-slate-900">
-                    Try a broader search or switch categories.
+                    {hasCatalogProducts
+                      ? 'Try a broader search or switch categories.'
+                      : 'No products have been published yet.'}
                   </h2>
                   <p className="mt-3 max-w-xl text-sm leading-6 text-slate-600">
-                    We couldn&apos;t find products matching your current search. Clear the search box
-                    or return to All Products to explore the full catalog.
+                    {hasCatalogProducts
+                      ? 'We couldn&apos;t find products matching your current search. Clear the search box or return to All Products to explore the full catalog.'
+                      : 'The shop is connected to your backend catalog, and it will display products here once they are added and published from the CMS.'}
                   </p>
-                  <div className="mt-5 flex flex-wrap gap-3">
-                    <button
-                      onClick={() => {
-                        startTransition(() => {
-                          setSearchTerm('')
-                          setActiveFilter('All Products')
-                        })
-                      }}
-                      className="btn-primary"
-                    >
-                      Reset filters
-                    </button>
-                  </div>
+                  {hasCatalogProducts || hasActiveSearch || activeFilter !== 'All Products' ? (
+                    <div className="mt-5 flex flex-wrap gap-3">
+                      <button
+                        onClick={() => {
+                          startTransition(() => {
+                            setSearchTerm('')
+                            setActiveFilter('All Products')
+                          })
+                        }}
+                        className="btn-primary"
+                      >
+                        Reset filters
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
               )}
             </div>
