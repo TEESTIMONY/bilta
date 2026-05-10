@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import TeamNavbar from '../components/TeamNavbar'
 import Footer from '../components/Footer'
-import { filters as defaultFilters, products as defaultProducts } from '../data/productsData'
+import { filters as defaultFilters } from '../data/productsData'
 import { USE_DJANGO_API } from '../services/api'
 import { clearTeamProductsStorage, getProductsData, saveTeamProducts } from '../services/productsService'
 
@@ -66,12 +66,13 @@ function TeamProductsEditor() {
       const data = await getProductsData()
       if (!isMounted) return
 
-      if (USE_DJANGO_API) {
+      if (USE_DJANGO_API || data.source === 'team-storage') {
         setProducts(data.products || [])
         return
       }
 
-      setProducts(data.products?.length ? data.products : defaultProducts)
+      setProducts([])
+      setStatus('This page is configured to show only backend products. No backend catalog data is available yet.')
     }
 
     loadEditorData()
@@ -269,14 +270,8 @@ function TeamProductsEditor() {
 
   function handleReset() {
     clearTeamProductsStorage()
-    if (USE_DJANGO_API) {
-      setProducts([])
-      setStatus('Local product fallback has been cleared. This page now shows only backend products.')
-      return
-    }
-
-    setProducts(defaultProducts)
-    setStatus('Team override cleared. App will use CMS/local source again.')
+    setProducts([])
+    setStatus('Local product fallback has been cleared. This page now shows only backend products.')
   }
 
   const categoryOptions = useMemo(() => {
