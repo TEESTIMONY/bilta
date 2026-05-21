@@ -243,14 +243,13 @@ function TeamSettingsPage() {
           <div className="pointer-events-none absolute right-8 top-10 h-24 w-24 bg-white/10 blur-3xl" />
           <div className="container-shell relative">
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-yellow">
-              Owner Settings
+              Settings
             </p>
             <h1 className="mt-3 text-3xl font-extrabold text-white sm:text-4xl">
-              Manage staff access and the core business settings behind the CMS.
+              Manage staff and shop settings.
             </h1>
             <p className="mt-4 max-w-3xl text-sm leading-6 text-slate-100 sm:text-base">
-              This screen is owner-only. Use it to control who can enter the CMS, reset passwords,
-              and keep the core shop settings accurate.
+              Use this page to add staff, reset passwords, and update shop details.
             </p>
           </div>
         </section>
@@ -268,9 +267,9 @@ function TeamSettingsPage() {
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                      Business Settings
+                      Shop Settings
                     </p>
-                    <h2 className="mt-1 text-2xl font-extrabold text-navy">Shop details</h2>
+                    <h2 className="mt-1 text-2xl font-extrabold text-navy">Shop Info</h2>
                   </div>
                   {loading ? <span className="text-sm text-slate-500">Loading...</span> : null}
                 </div>
@@ -344,9 +343,9 @@ function TeamSettingsPage() {
               <div className="border border-slate-200 bg-white p-5 shadow-sm md:p-6">
                 <div>
                   <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                    Invite Staff
+                    New Staff
                   </p>
-                  <h2 className="mt-1 text-2xl font-extrabold text-navy">Send a setup link</h2>
+                  <h2 className="mt-1 text-2xl font-extrabold text-navy">Invite Staff</h2>
                   <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
                     Add the staff member&apos;s details and role. They&apos;ll receive a setup link
                     you can share so they can choose their own username and password.
@@ -438,7 +437,7 @@ function TeamSettingsPage() {
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                        Pending Invitations
+                        Waiting Invites
                       </p>
                       <h3 className="mt-1 text-lg font-extrabold text-slate-900">
                         {pendingInvitations.length} awaiting setup
@@ -514,9 +513,9 @@ function TeamSettingsPage() {
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                    Staff Accounts
+                    Staff
                   </p>
-                  <h2 className="mt-1 text-2xl font-extrabold text-navy">Manage active logins</h2>
+                  <h2 className="mt-1 text-2xl font-extrabold text-navy">Staff Accounts</h2>
                 </div>
                 <span className="border border-slate-200 bg-slate-50 px-3 py-1 text-sm font-semibold text-slate-600">
                   {orderedAccounts.length} accounts

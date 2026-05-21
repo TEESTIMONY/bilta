@@ -314,11 +314,11 @@ function TeamProductsEditor() {
       <main>
         <section className="container-shell py-12 md:py-14">
           <p className="inline-flex items-center rounded-full border border-navy/20 bg-navy/5 px-3 py-1 text-xs font-bold uppercase tracking-wider text-navy">
-            Team CMS
+            Products
           </p>
-          <h1 className="mt-3 text-3xl font-extrabold sm:text-4xl">Products Editor</h1>
+          <h1 className="mt-3 text-3xl font-extrabold sm:text-4xl">Edit Products</h1>
           <p className="mt-3 max-w-3xl text-sm leading-relaxed text-slate-600 sm:text-base">
-            Manage product content, pricing, images, and detail-page options from one structured admin view.
+            Add products, change prices, update images, and edit product details from one page.
           </p>
 
           <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -331,7 +331,7 @@ function TeamProductsEditor() {
               <p className="mt-1 text-2xl font-extrabold text-slate-900">{visibleProducts.length}</p>
             </div>
             <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm sm:col-span-2">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Active category</p>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Current category</p>
               <p className="mt-1 truncate text-base font-bold text-slate-900">{activeCategory}</p>
             </div>
           </div>
@@ -342,7 +342,7 @@ function TeamProductsEditor() {
             <div className="sticky top-2 z-40 rounded-lg border border-slate-200 bg-white/95 p-4 shadow-sm backdrop-blur md:top-[72px] md:p-5">
               <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-end">
                 <div>
-                  <label className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">Filter category</label>
+                  <label className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">Category</label>
                   <select
                     value={activeCategory}
                     onChange={(e) => setActiveCategory(e.target.value)}
@@ -425,7 +425,7 @@ function TeamProductsEditor() {
             ) : (
               <div className="rounded-lg border border-slate-200 bg-white px-5 py-8 text-center shadow-sm">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                  Product Catalog
+                  Product List
                 </p>
                 <h2 className="mt-2 text-2xl font-extrabold text-slate-900">
                   No products have been added yet.
@@ -451,7 +451,7 @@ function TeamProductsEditor() {
                         <div className="flex flex-wrap items-start justify-between gap-4">
                           <div>
                             <p className="inline-flex border border-navy/15 bg-navy/5 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-navy">
-                              Product Details
+                              Product
                             </p>
                             <h2 className="mt-3 text-2xl font-extrabold text-navy md:text-3xl">
                               {selectedProduct.title || 'Untitled product'}
@@ -473,10 +473,10 @@ function TeamProductsEditor() {
                         <div className="space-y-5">
                           <section className="border border-slate-200 bg-slate-50/70 p-5 shadow-sm">
                             <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">
-                              Core Details
+                              Basic Info
                             </p>
                             <h3 className="mt-1 text-lg font-extrabold text-slate-900">
-                              Product identity
+                              Product Info
                             </h3>
 
                             <div className="mt-4 grid gap-4 md:grid-cols-2">
@@ -569,7 +569,7 @@ function TeamProductsEditor() {
                               Media
                             </p>
                             <h3 className="mt-1 text-lg font-extrabold text-slate-900">
-                              Images and previews
+                              Product Images
                             </h3>
 
                             <label className="mt-4 block text-sm font-semibold text-slate-700">
@@ -634,7 +634,7 @@ function TeamProductsEditor() {
 
                           <section className="border border-navy/10 bg-navy p-5 text-white shadow-lg">
                             <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-yellow">
-                              Editing flow
+                              Save Help
                             </p>
                             <p className="mt-2 text-sm leading-6 text-slate-100">
                               Make your changes here, then use the main "Save" button on the page to publish them to your current source.
@@ -659,7 +659,7 @@ function TeamProductsEditor() {
               <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4">
                 <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg bg-white p-5 shadow-2xl md:p-6">
                   <div className="mb-4 flex items-center justify-between">
-                    <h2 className="text-2xl font-extrabold text-navy">Add New Product</h2>
+                    <h2 className="text-2xl font-extrabold text-navy">Add Product</h2>
                     <button
                       onClick={() => setIsAddModalOpen(false)}
                       className="rounded-md border border-slate-300 px-3 py-1 text-sm font-semibold text-slate-700 hover:bg-slate-50"

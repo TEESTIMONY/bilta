@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import Footer from '../components/Footer'
 import TeamNavbar from '../components/TeamNavbar'
 import { getDailySummary, getOrdersData } from '../services/ordersService'
@@ -54,6 +55,7 @@ function getWATDateKey(value) {
 }
 
 function TeamOwnerReportsPage() {
+  const navigate = useNavigate()
   const [reportDate, setReportDate] = useState(getTodayDateValue())
   const [dailySummary, setDailySummary] = useState(null)
   const [jobs, setJobs] = useState([])
@@ -96,6 +98,14 @@ function TeamOwnerReportsPage() {
     return jobs.filter((job) => getWATDateKey(job.created_at) === reportDate)
   }, [jobs, reportDate])
 
+  const selectedDateCompletedJobs = useMemo(() => {
+    return jobs.filter(
+      (job) =>
+        job.status === 'completed' &&
+        getWATDateKey(job.updated_at || job.created_at) === reportDate,
+    )
+  }, [jobs, reportDate])
+
   const selectedDatePayments = useMemo(() => {
     return payments.filter((payment) => getWATDateKey(payment.createdAt) === reportDate)
   }, [payments, reportDate])
@@ -125,8 +135,15 @@ function TeamOwnerReportsPage() {
   }, [selectedDateAuditLogs, selectedDatePayments, selectedDateSessions])
 
   const completedUnpaidJobs = useMemo(() => {
-    return selectedDateJobs.filter((job) => job.status === 'completed' && job.paymentStatus !== 'paid')
-  }, [selectedDateJobs])
+    return selectedDateCompletedJobs.filter((job) => job.paymentStatus !== 'paid')
+  }, [selectedDateCompletedJobs])
+
+  function handleViewUnpaidCompletedJobs() {
+    if (!completedUnpaidJobs.length) return
+    const targetJobId = completedUnpaidJobs[0]?.id
+    if (!targetJobId) return
+    navigate(`/team/orders?focusJobId=${encodeURIComponent(targetJobId)}`)
+  }
 
   const overdueActiveJobs = useMemo(() => {
     return jobs.filter((job) => job.status !== 'completed' && job.status !== 'cancelled' && job.isOverdue)
@@ -240,21 +257,20 @@ function TeamOwnerReportsPage() {
           <div className="pointer-events-none absolute right-8 top-10 h-24 w-24 bg-white/10 blur-3xl" />
           <div className="container-shell relative">
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-yellow">
-              Owner Monitoring
+              Owner Report
             </p>
             <div className="mt-3 flex flex-wrap items-end justify-between gap-4">
               <div className="max-w-3xl">
                 <h1 className="text-3xl font-extrabold text-white sm:text-4xl">
-                  See the money trail, staff activity, and risk signals for the shop in one place.
+                  Check shop money, staff work, and problem areas in one place.
                 </h1>
                 <p className="mt-4 text-sm leading-6 text-slate-100 sm:text-base">
-                  This view brings together daily totals, suspicious edits, photocopy gaps, and
-                  staff-level activity so issues are difficult to hide.
+                  Check daily totals, staff activity, changes, and photocopy gaps from one screen.
                 </p>
               </div>
 
               <label className="block w-full text-sm font-semibold text-slate-100 sm:w-auto">
-                Report date
+                Date
                 <input
                   type="date"
                   value={reportDate}
@@ -274,19 +290,19 @@ function TeamOwnerReportsPage() {
           ) : null}
 
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <StatCard label="Revenue Logged" value={formatCurrency(dailySummary?.total_revenue ?? 0)} />
+            <StatCard label="Money Made" value={formatCurrency(dailySummary?.total_revenue ?? 0)} />
             <StatCard
-              label="Outstanding Balances"
+              label="Balance Left"
               value={formatCurrency(dailySummary?.outstanding_balances ?? 0)}
               tone={Number(dailySummary?.outstanding_balances ?? 0) > 0 ? 'alert' : 'normal'}
             />
             <StatCard
-              label="Completed but Unpaid"
+              label="Done Not Paid"
               value={completedUnpaidJobs.length}
               tone={completedUnpaidJobs.length > 0 ? 'alert' : 'normal'}
             />
             <StatCard
-              label="Photocopy Gap Exposure"
+              label="Photocopy Gap"
               value={formatCurrency(discrepancyOverview.photocopyGapTotal)}
               tone={discrepancyOverview.photocopyGapTotal > 0 ? 'alert' : 'accent'}
             />
@@ -298,9 +314,9 @@ function TeamOwnerReportsPage() {
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                      Daily Risk Snapshot
+                      Quick Check
                     </p>
-                    <h2 className="mt-1 text-2xl font-extrabold text-navy">What needs attention</h2>
+                    <h2 className="mt-1 text-2xl font-extrabold text-navy">Needs Attention</h2>
                   </div>
                   {loading ? <span className="text-sm text-slate-500">Loading...</span> : null}
                 </div>
@@ -310,6 +326,8 @@ function TeamOwnerReportsPage() {
                     label="Completed jobs with missing full payment"
                     value={completedUnpaidJobs.length}
                     danger={completedUnpaidJobs.length > 0}
+                    actionLabel={completedUnpaidJobs.length > 0 ? 'View jobs' : ''}
+                    onAction={completedUnpaidJobs.length > 0 ? handleViewUnpaidCompletedJobs : null}
                   />
                   <AlertRow
                     label="Photocopy sessions with discrepancies"
@@ -333,9 +351,9 @@ function TeamOwnerReportsPage() {
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                      Staff Report
+                      Staff Work
                     </p>
-                    <h2 className="mt-1 text-2xl font-extrabold text-navy">Activity by staff member</h2>
+                    <h2 className="mt-1 text-2xl font-extrabold text-navy">Staff Summary</h2>
                   </div>
                   <span className="border border-slate-200 bg-slate-50 px-3 py-1 text-sm font-semibold text-slate-600">
                     {staffSummary.length} active
@@ -392,9 +410,9 @@ function TeamOwnerReportsPage() {
               <div className="border border-slate-200 bg-white p-5 shadow-sm md:p-6">
                 <div>
                   <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                    High-Risk Activity
+                    Problem Changes
                   </p>
-                  <h2 className="mt-1 text-2xl font-extrabold text-navy">Edits and anomalies</h2>
+                  <h2 className="mt-1 text-2xl font-extrabold text-navy">Changes and Issues</h2>
                 </div>
 
                 <div className="mt-5 space-y-3">
@@ -438,9 +456,9 @@ function TeamOwnerReportsPage() {
                 <div className="flex flex-wrap items-end justify-between gap-3">
                   <div>
                     <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                      Audit Trail
+                      Activity Log
                     </p>
-                    <h2 className="mt-1 text-2xl font-extrabold text-navy">Search activity log</h2>
+                    <h2 className="mt-1 text-2xl font-extrabold text-navy">Search Log</h2>
                   </div>
 
                   <div className="grid w-full gap-3 sm:grid-cols-2">
@@ -541,7 +559,7 @@ function MiniValueCard({ label, value, tone = 'normal' }) {
   )
 }
 
-function AlertRow({ label, value, danger }) {
+function AlertRow({ label, value, danger, actionLabel = '', onAction = null }) {
   return (
     <div
       className={`flex flex-col gap-2 border px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between ${
@@ -551,7 +569,18 @@ function AlertRow({ label, value, danger }) {
       }`}
     >
       <span className="font-semibold">{label}</span>
-      <span className="text-base font-extrabold">{value}</span>
+      <div className="flex items-center gap-3">
+        <span className="text-base font-extrabold">{value}</span>
+        {actionLabel && onAction ? (
+          <button
+            type="button"
+            onClick={onAction}
+            className="border border-current px-2 py-1 text-xs font-bold uppercase tracking-[0.12em] transition hover:bg-white/50"
+          >
+            {actionLabel}
+          </button>
+        ) : null}
+      </div>
     </div>
   )
 }

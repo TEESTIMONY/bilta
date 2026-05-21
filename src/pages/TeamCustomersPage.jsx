@@ -136,14 +136,13 @@ function TeamCustomersPage() {
           <div className="pointer-events-none absolute right-8 top-10 h-24 w-24 bg-white/10 blur-3xl" />
           <div className="container-shell relative">
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-yellow">
-              Customer Management
+              Customers
             </p>
             <h1 className="mt-3 text-3xl font-extrabold text-white sm:text-4xl">
-              Keep every customer searchable, segment-aware, and easy to follow up.
+              Add, find, and follow up with customers.
             </h1>
             <p className="mt-4 max-w-3xl text-sm leading-6 text-slate-100 sm:text-base">
-              Built for recurring business: fast lookup at the counter, clear customer types, last
-              job visibility, and follow-up reminders for retention.
+              Search customers fast, see their last job, and mark people to follow up.
             </p>
           </div>
         </section>
@@ -159,9 +158,9 @@ function TeamCustomersPage() {
             <section className="border border-slate-200 bg-white p-5 shadow-sm md:p-6">
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                  Customer Intake
+                  New Customer
                 </p>
-                <h2 className="mt-1 text-2xl font-extrabold text-navy">Add or Register Customer</h2>
+                <h2 className="mt-1 text-2xl font-extrabold text-navy">Add Customer</h2>
               </div>
 
               <form onSubmit={handleCreate} className="mt-6 space-y-4">
@@ -272,9 +271,9 @@ function TeamCustomersPage() {
             <section className="space-y-6">
               <div className="border border-slate-200 bg-white p-5 shadow-sm md:p-6">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                  Segment Snapshot
+                  Customer Summary
                 </p>
-                <h2 className="mt-1 text-2xl font-extrabold text-navy">Retention Overview</h2>
+                <h2 className="mt-1 text-2xl font-extrabold text-navy">Overview</h2>
 
                 <div className="mt-5 grid gap-3 sm:grid-cols-2">
                   <ValueCard label="Walk-in Records" value={segmentStats.walkIn} />
@@ -288,9 +287,9 @@ function TeamCustomersPage() {
                 <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                      Quick Lookup
+                      Recent Customers
                     </p>
-                    <h2 className="mt-1 text-2xl font-extrabold text-navy">Recent Customer Profiles</h2>
+                    <h2 className="mt-1 text-2xl font-extrabold text-navy">Customer List</h2>
                   </div>
                   {loading ? <span className="text-sm text-slate-500">Loading...</span> : null}
                 </div>
@@ -353,11 +352,11 @@ function TeamCustomersPage() {
             >
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                  Customer Directory
+                  All Customers
                 </p>
-                <h2 className="mt-1 text-2xl font-extrabold text-navy">Searchable Full List</h2>
+                <h2 className="mt-1 text-2xl font-extrabold text-navy">Full Customer List</h2>
                 <p className="mt-2 text-sm text-slate-500">
-                  Expand only when you need the full directory, so the page stays lighter to scan.
+                  Open this when you want to see every customer in one list.
                 </p>
               </div>
 

@@ -1,12 +1,12 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react'
 import { ChevronDown, Search } from 'lucide-react'
+import { useSearchParams } from 'react-router-dom'
 import Footer from '../components/Footer'
 import TeamNavbar from '../components/TeamNavbar'
 import { useAuth } from '../context/authContext'
 import { createCustomer, getCustomersData } from '../services/customersService'
 import {
   createJob,
-  ensureWalkInCustomer,
   getDailySummary,
   getJobsQueueData,
   updateOrderQuickFields,
@@ -51,6 +51,8 @@ const queueViewOptions = [
   { value: 'needs_attention', label: 'Needs Attention' },
   { value: 'in_progress', label: 'In Progress' },
   { value: 'ready', label: 'Ready' },
+  { value: 'payment_issues', label: 'Payment Issues' },
+  { value: 'completed', label: 'Completed' },
   { value: 'all', label: 'All Jobs' },
 ]
 
@@ -114,8 +116,59 @@ function titleCase(value) {
     .join(' ')
 }
 
+function isCompletedJob(order) {
+  return order?.status === 'completed'
+}
+
+function isActiveDeskJob(order) {
+  return order?.status !== 'completed' && order?.status !== 'cancelled'
+}
+
+function hasOutstandingPayment(order) {
+  return Number(order?.balanceDue || 0) > 0 || order?.paymentStatus !== 'paid'
+}
+
+function isCompletedWithPaymentIssue(order) {
+  return isCompletedJob(order) && hasOutstandingPayment(order)
+}
+
+function getActiveJobSortPriority(order) {
+  if (order?.isOverdue) return 0
+  if (order?.status === 'in_progress') return 1
+  if (order?.status === 'awaiting_delivery') return 2
+  if (order?.status === 'ready_for_pickup') return 3
+  if (order?.status === 'pending') return 4
+  return 5
+}
+
+function getTimestamp(value, fallback) {
+  const parsed = new Date(value || fallback || 0)
+  const timestamp = parsed.getTime()
+  return Number.isNaN(timestamp) ? 0 : timestamp
+}
+
+function compareDeskOrders(left, right) {
+  const leftPriority = isActiveDeskJob(left) ? 0 : isCompletedWithPaymentIssue(left) ? 1 : 2
+  const rightPriority = isActiveDeskJob(right) ? 0 : isCompletedWithPaymentIssue(right) ? 1 : 2
+
+  if (leftPriority !== rightPriority) return leftPriority - rightPriority
+
+  if (leftPriority === 0) {
+    const leftStatusPriority = getActiveJobSortPriority(left)
+    const rightStatusPriority = getActiveJobSortPriority(right)
+    if (leftStatusPriority !== rightStatusPriority) return leftStatusPriority - rightStatusPriority
+
+    const leftDeadline = left.deadline ? getTimestamp(left.deadline) : Number.MAX_SAFE_INTEGER
+    const rightDeadline = right.deadline ? getTimestamp(right.deadline) : Number.MAX_SAFE_INTEGER
+    if (leftDeadline !== rightDeadline) return leftDeadline - rightDeadline
+  }
+
+  return getTimestamp(right.updated_at, right.created_at) - getTimestamp(left.updated_at, left.created_at)
+}
+
 function TeamOrdersDashboard() {
   const { isOwner } = useAuth()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [orders, setOrders] = useState([])
   const [customers, setCustomers] = useState([])
   const [dailySummary, setDailySummary] = useState(null)
@@ -183,6 +236,31 @@ function TeamOrdersDashboard() {
   }, [orders])
 
   useEffect(() => {
+    const focusJobIdParam = searchParams.get('focusJobId')
+    if (!focusJobIdParam) return
+
+    const targetId = Number(focusJobIdParam)
+    if (!Number.isFinite(targetId)) return
+
+    const targetExists = orders.some((order) => order.id === targetId)
+    if (!targetExists) return
+
+    setQueueView('all')
+    setQueueSearch('')
+    setExpandedOrderId(targetId)
+
+    if (typeof document !== 'undefined') {
+      setTimeout(() => {
+        document.getElementById('desk-job-list')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }, 50)
+    }
+
+    const nextParams = new URLSearchParams(searchParams)
+    nextParams.delete('focusJobId')
+    setSearchParams(nextParams, { replace: true })
+  }, [orders, searchParams, setSearchParams])
+
+  useEffect(() => {
     setVisibleQueueCount(6)
   }, [deferredQueueSearch, queueView])
 
@@ -204,21 +282,6 @@ function TeamOrdersDashboard() {
     })
   }, [customers, deferredCustomerSearch])
 
-  const deskStats = useMemo(() => {
-    const overdue = orders.filter((item) => item.isOverdue).length
-    const unpaid = orders.filter((item) => item.paymentStatus === 'unpaid').length
-    const partiallyPaid = orders.filter((item) => item.paymentStatus === 'partial').length
-    const activeRevenue = orders.reduce((sum, item) => sum + Number(item.totalAmount || 0), 0)
-
-    return {
-      activeJobs: orders.length,
-      overdue,
-      unpaid,
-      partiallyPaid,
-      activeRevenue,
-    }
-  }, [orders])
-
   const customerSegments = useMemo(() => {
     const recurring = customers.filter((item) => item.customer_type === 'recurring').length
     const premium = customers.filter((item) => item.customer_type === 'premium').length
@@ -226,16 +289,44 @@ function TeamOrdersDashboard() {
     return { recurring, premium, followUp }
   }, [customers])
 
+  const activeOrders = useMemo(() => orders.filter((order) => isActiveDeskJob(order)), [orders])
+
+  const completedOrders = useMemo(() => orders.filter((order) => isCompletedJob(order)), [orders])
+
+  const completedJobsWithPaymentIssues = useMemo(
+    () => orders.filter((order) => isCompletedWithPaymentIssue(order)),
+    [orders],
+  )
+
+  const deskStats = useMemo(() => {
+    const overdue = activeOrders.filter((item) => item.isOverdue).length
+    const unpaid = activeOrders.filter((item) => item.paymentStatus === 'unpaid').length
+    const partiallyPaid = activeOrders.filter((item) => item.paymentStatus === 'partial').length
+    const activeRevenue = activeOrders.reduce((sum, item) => sum + Number(item.totalAmount || 0), 0)
+
+    return {
+      activeJobs: activeOrders.length,
+      overdue,
+      unpaid,
+      partiallyPaid,
+      activeRevenue,
+    }
+  }, [activeOrders])
+
   const filteredQueueOrders = useMemo(() => {
     const query = deferredQueueSearch.trim().toLowerCase()
 
     const matchesFilter = (order) => {
       if (queueView === 'all') return true
-      if (queueView === 'needs_attention') return order.isOverdue || order.status === 'pending'
+      if (queueView === 'needs_attention') {
+        return (isActiveDeskJob(order) && (order.isOverdue || order.status === 'pending')) || isCompletedWithPaymentIssue(order)
+      }
       if (queueView === 'in_progress') {
         return order.status === 'in_progress' || order.status === 'awaiting_delivery'
       }
       if (queueView === 'ready') return order.status === 'ready_for_pickup'
+      if (queueView === 'payment_issues') return isCompletedWithPaymentIssue(order)
+      if (queueView === 'completed') return isCompletedJob(order)
       return true
     }
 
@@ -258,12 +349,7 @@ function TeamOrdersDashboard() {
 
     return orders
       .filter((order) => matchesFilter(order) && matchesQuery(order))
-      .sort((a, b) => {
-        if (a.isOverdue !== b.isOverdue) return a.isOverdue ? -1 : 1
-        const aDeadline = a.deadline ? new Date(a.deadline).getTime() : Number.MAX_SAFE_INTEGER
-        const bDeadline = b.deadline ? new Date(b.deadline).getTime() : Number.MAX_SAFE_INTEGER
-        return aDeadline - bDeadline
-      })
+      .sort(compareDeskOrders)
   }, [deferredQueueSearch, orders, queueView])
 
   const visibleQueueOrders = useMemo(
@@ -273,15 +359,31 @@ function TeamOrdersDashboard() {
 
   const queueCounts = useMemo(
     () => ({
-      needsAttention: orders.filter((order) => order.isOverdue || order.status === 'pending').length,
-      inProgress: orders.filter(
+      needsAttention: orders.filter(
+        (order) =>
+          (isActiveDeskJob(order) && (order.isOverdue || order.status === 'pending')) ||
+          isCompletedWithPaymentIssue(order),
+      ).length,
+      inProgress: activeOrders.filter(
         (order) => order.status === 'in_progress' || order.status === 'awaiting_delivery',
       ).length,
-      ready: orders.filter((order) => order.status === 'ready_for_pickup').length,
+      ready: activeOrders.filter((order) => order.status === 'ready_for_pickup').length,
+      paymentIssues: completedJobsWithPaymentIssues.length,
+      completed: completedOrders.length,
       all: orders.length,
     }),
-    [orders],
+    [activeOrders, completedJobsWithPaymentIssues.length, completedOrders.length, orders],
   )
+
+  const attentionOrders = useMemo(() => {
+    return orders
+      .filter(
+        (order) =>
+          (isActiveDeskJob(order) && (order.isOverdue || order.status === 'pending')) ||
+          isCompletedWithPaymentIssue(order),
+      )
+      .sort(compareDeskOrders)
+  }, [orders])
 
   const totalAmount = useMemo(() => {
     const quantity = Math.max(1, Number(form.quantity || 1))
@@ -363,12 +465,16 @@ function TeamOrdersDashboard() {
     setExpandedOrderId((current) => (current === orderId ? null : orderId))
   }
 
-  async function resolveCustomerId() {
-    if (customerMode === 'walk_in') {
-      const walkInCustomer = await ensureWalkInCustomer()
-      return walkInCustomer.id
+  function focusOrder(orderId) {
+    setQueueView('needs_attention')
+    setQueueSearch('')
+    setExpandedOrderId(orderId)
+    if (typeof document !== 'undefined') {
+      document.getElementById('desk-job-list')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }
+  }
 
+  async function resolveCustomerId() {
     if (customerMode === 'existing') {
       if (!selectedCustomerId) {
         throw new Error('Select an existing customer before saving the job.')
@@ -377,14 +483,14 @@ function TeamOrdersDashboard() {
     }
 
     if (!form.customerName.trim()) {
-      throw new Error('Customer name is required for a new customer job.')
+      throw new Error('Customer name is required before saving this job.')
     }
 
     const createdCustomer = await createCustomer({
       full_name: form.customerName.trim(),
       phone: form.phone.trim(),
       business_name: form.businessName.trim(),
-      customer_type: form.customerType,
+      customer_type: customerMode === 'walk_in' ? 'walk_in' : form.customerType,
     })
 
     return createdCustomer.id
@@ -443,16 +549,16 @@ function TeamOrdersDashboard() {
           <div className="pointer-events-none absolute right-8 top-10 h-24 w-24 bg-white/10 blur-3xl" />
           <div className="container-shell relative">
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-yellow">
-              Counter Desk
+              Front Desk
             </p>
             <div className="mt-3 grid gap-6 lg:grid-cols-[1.1fr_0.9fr] lg:items-end">
               <div>
                 <h1 className="text-3xl font-extrabold text-white sm:text-4xl">
-                  Run jobs, customers, and today&apos;s shop activity from one screen.
+                  Manage jobs, customers, and payments from one screen.
                 </h1>
                 <p className="mt-4 max-w-3xl text-sm leading-6 text-slate-100 sm:text-base">
-                  Built for fast counter work: create a job, link the right customer, track payment
-                  progress, and keep the active queue visible all day.
+                  Add a job, choose the customer, update payment, and check today&apos;s jobs in one
+                  place.
                 </p>
               </div>
 
@@ -473,14 +579,15 @@ function TeamOrdersDashboard() {
             </div>
           ) : null}
 
-          <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+          <div className="flex flex-col gap-8">
+            <div className="order-2 grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
             <section className="border border-slate-200 bg-white p-5 shadow-sm md:p-6">
               <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                    Quick Intake
+                    New Job
                   </p>
-                  <h2 className="mt-1 text-2xl font-extrabold text-navy">Create Job Order</h2>
+                  <h2 className="mt-1 text-2xl font-extrabold text-navy">Add Job</h2>
                 </div>
                 <div className="grid w-full gap-2 sm:flex sm:w-auto sm:flex-wrap">
                   {[
@@ -505,12 +612,6 @@ function TeamOrdersDashboard() {
               </div>
 
               <form onSubmit={handleCreateJob} className="mt-6 space-y-5">
-                {customerMode === 'walk_in' ? (
-                  <div className="border border-yellow/40 bg-yellow/10 px-4 py-3 text-sm text-slate-700">
-                    This job will be saved under the reusable generic <span className="font-bold">Walk-in</span> customer record.
-                  </div>
-                ) : null}
-
                 {customerMode === 'existing' ? (
                   <div className="space-y-3 border border-slate-200 bg-slate-50 p-4">
                     <label className="block text-sm font-semibold text-slate-700">
@@ -551,7 +652,7 @@ function TeamOrdersDashboard() {
                   </div>
                 ) : null}
 
-                {customerMode === 'new' ? (
+                {customerMode === 'new' || customerMode === 'walk_in' ? (
                   <div className="grid gap-3 border border-slate-200 bg-slate-50 p-4 md:grid-cols-2">
                     <label className="block text-sm font-semibold text-slate-700">
                       Customer name
@@ -583,17 +684,19 @@ function TeamOrdersDashboard() {
                       />
                     </label>
 
-                    <label className="block text-sm font-semibold text-slate-700">
-                      Customer segment
-                      <select
-                        value={form.customerType}
-                        onChange={(e) => setForm((current) => ({ ...current, customerType: e.target.value }))}
-                        className="mt-2 w-full border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-navy"
-                      >
-                        <option value="recurring">Recurring</option>
-                        <option value="premium">Premium / Project</option>
-                      </select>
-                    </label>
+                    {customerMode === 'new' ? (
+                      <label className="block text-sm font-semibold text-slate-700">
+                        Customer segment
+                        <select
+                          value={form.customerType}
+                          onChange={(e) => setForm((current) => ({ ...current, customerType: e.target.value }))}
+                          className="mt-2 w-full border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-navy"
+                        >
+                          <option value="recurring">Recurring</option>
+                          <option value="premium">Premium / Project</option>
+                        </select>
+                      </label>
+                    ) : null}
                   </div>
                 ) : null}
 
@@ -718,49 +821,10 @@ function TeamOrdersDashboard() {
 
             <section className="space-y-6">
               <div className="border border-slate-200 bg-white p-5 shadow-sm md:p-6">
-                <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                      Daily Summary
-                    </p>
-                    <h2 className="mt-1 text-2xl font-extrabold text-navy">Today&apos;s Numbers</h2>
-                  </div>
-                  <input
-                    type="date"
-                    value={summaryDate}
-                    onChange={(e) => setSummaryDate(e.target.value)}
-                    className="w-full border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-navy sm:w-auto"
-                  />
-                </div>
-
-                <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                  <MiniValueCard label="Jobs Created" value={dailySummary?.jobs_created ?? 0} />
-                  <MiniValueCard label="Jobs Completed" value={dailySummary?.jobs_completed ?? 0} />
-                  <MiniValueCard label="Payments Logged" value={dailySummary?.payments_received ?? 0} />
-                  <MiniValueCard label="Photocopy Sessions" value={dailySummary?.photocopy_sessions ?? 0} />
-                  <MiniValueCard label="Revenue Logged" value={formatCurrency(dailySummary?.total_revenue ?? 0)} />
-                  <MiniValueCard label="Outstanding" value={formatCurrency(dailySummary?.outstanding_balances ?? 0)} />
-                </div>
-
-                <div className="mt-5 grid gap-3">
-                  <AlertRow
-                    label="Completed jobs without full payment"
-                    value={dailySummary?.anomalies?.completed_unpaid_jobs ?? 0}
-                    danger={(dailySummary?.anomalies?.completed_unpaid_jobs ?? 0) > 0}
-                  />
-                  <AlertRow
-                    label="Photocopy discrepancies"
-                    value={dailySummary?.anomalies?.photocopy_discrepancies ?? 0}
-                    danger={(dailySummary?.anomalies?.photocopy_discrepancies ?? 0) > 0}
-                  />
-                </div>
-              </div>
-
-              <div className="border border-slate-200 bg-white p-5 shadow-sm md:p-6">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                  Customer Snapshot
+                  Customers
                 </p>
-                <h2 className="mt-1 text-2xl font-extrabold text-navy">Retention View</h2>
+                <h2 className="mt-1 text-2xl font-extrabold text-navy">Recent Customers</h2>
 
                 <div className="mt-5 grid gap-3 sm:grid-cols-3">
                   <MiniValueCard label="Recurring" value={customerSegments.recurring} />
@@ -800,72 +864,83 @@ function TeamOrdersDashboard() {
                 </div>
               </div>
             </section>
-          </div>
+            </div>
 
-          <section className="mt-8 border border-slate-200 bg-white p-5 shadow-sm md:p-6">
-            <div className="flex flex-wrap items-center justify-between gap-3">
+            <section id="desk-job-list" className="order-1 border border-slate-200 bg-white p-5 shadow-sm md:p-6">
+              <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                  Active Queue
+                  Job List
                 </p>
-                <h2 className="mt-1 text-2xl font-extrabold text-navy">Jobs In Motion</h2>
+                <h2 className="mt-1 text-2xl font-extrabold text-navy">All Jobs</h2>
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+                  Active jobs show first. Completed jobs also stay here, so you can still check job
+                  details and payment after the work is done.
+                </p>
               </div>
               {loading ? (
                 <span className="text-sm text-slate-500">Loading queue...</span>
               ) : (
                 <span className="border border-slate-200 bg-slate-50 px-3 py-1 text-sm font-semibold text-slate-600">
-                  {orders.length} active job{orders.length === 1 ? '' : 's'}
+                  {activeOrders.length} active / {completedOrders.length} completed
                 </span>
               )}
             </div>
 
-            <div className="mt-5 grid gap-3 lg:grid-cols-[1.2fr_0.8fr]">
-              <label className="flex items-center gap-3 border border-slate-200 bg-slate-50 px-3 py-3">
-                <Search size={16} className="text-slate-500" />
-                <input
-                  value={queueSearch}
-                  onChange={(e) => setQueueSearch(e.target.value)}
-                  className="w-full bg-transparent text-sm outline-none placeholder:text-slate-400"
-                  placeholder="Search customer, phone, job type, or request details"
-                />
-              </label>
+            <div className="mt-5 grid gap-6 xl:grid-cols-[1.2fr_0.8fr] xl:items-start">
+              <div>
+                <div className="grid gap-3 lg:grid-cols-[1.2fr_0.8fr]">
+                  <label className="flex items-center gap-1.5 rounded-md border border-slate-200/80 bg-white px-2.5 py-1">
+                    <Search size={14} className="text-slate-400" />
+                    <input
+                      value={queueSearch}
+                      onChange={(e) => setQueueSearch(e.target.value)}
+                      className="w-full bg-transparent text-xs leading-5 outline-none placeholder:text-slate-400"
+                      placeholder="Search customer, phone, job type, or request details"
+                    />
+                  </label>
 
-              <div className="grid gap-3 sm:grid-cols-3">
-                <MiniValueCard label="Attention" value={queueCounts.needsAttention} />
-                <MiniValueCard label="In Progress" value={queueCounts.inProgress} />
-                <MiniValueCard label="Ready" value={queueCounts.ready} />
-              </div>
-            </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <MiniValueCard label="Attention" value={queueCounts.needsAttention} compact />
+                    <MiniValueCard label="In Progress" value={queueCounts.inProgress} compact />
+                    <MiniValueCard label="Ready" value={queueCounts.ready} compact />
+                    <MiniValueCard label="Payment Issues" value={queueCounts.paymentIssues} compact />
+                  </div>
+                </div>
 
-            <div className="mt-4 flex flex-wrap gap-2">
-              {queueViewOptions.map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => setQueueView(option.value)}
-                  className={`border px-3 py-2 text-sm font-semibold transition ${
-                    queueView === option.value
-                      ? 'border-navy bg-navy text-white'
-                      : 'border-slate-300 bg-white text-slate-700 hover:border-navy hover:text-navy'
-                  }`}
-                >
-                  {option.label}
-                  <span className="ml-2 text-xs opacity-80">
-                    {option.value === 'needs_attention'
-                      ? queueCounts.needsAttention
-                      : option.value === 'in_progress'
-                        ? queueCounts.inProgress
-                        : option.value === 'ready'
-                          ? queueCounts.ready
-                          : queueCounts.all}
-                  </span>
-                </button>
-              ))}
-            </div>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {queueViewOptions.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setQueueView(option.value)}
+                      className={`border px-3 py-2 text-sm font-semibold transition ${
+                        queueView === option.value
+                          ? 'border-navy bg-navy text-white'
+                          : 'border-slate-300 bg-white text-slate-700 hover:border-navy hover:text-navy'
+                      }`}
+                    >
+                      {option.label}
+                      <span className="ml-2 text-xs opacity-80">
+                        {option.value === 'needs_attention'
+                          ? queueCounts.needsAttention
+                          : option.value === 'in_progress'
+                            ? queueCounts.inProgress
+                            : option.value === 'ready'
+                              ? queueCounts.ready
+                              : option.value === 'payment_issues'
+                                ? queueCounts.paymentIssues
+                                : option.value === 'completed'
+                                  ? queueCounts.completed
+                                  : queueCounts.all}
+                      </span>
+                    </button>
+                  ))}
+                </div>
 
-            <div className="mt-5 space-y-4">
-              {visibleQueueOrders.length ? (
-                visibleQueueOrders.map((order) => {
+                <div className="mt-5 space-y-4">
+                  {visibleQueueOrders.length ? (
+                    visibleQueueOrders.map((order) => {
                   const queueDraft = queueEdits[order.id] || {
                     quantity: String(Math.max(1, Number(order.quantity || 1))),
                     unitPrice: String(Number(order.unitPrice || 0)),
@@ -875,14 +950,22 @@ function TeamOrdersDashboard() {
                   const draftTotal = Math.max(1, Number(queueDraft.quantity || 1)) * Number(queueDraft.unitPrice || 0)
                   const draftBalance = Math.max(0, draftTotal - Number(queueDraft.amountPaid || 0))
                   const isExpanded = expandedOrderId === order.id
+                  const hasPaymentIssue = isCompletedWithPaymentIssue(order)
+                  const isCompleted = isCompletedJob(order)
 
-                  return (
-                    <article
-                      key={order.id}
-                      className={`border p-4 shadow-sm ${
-                        order.isOverdue ? 'border-red-300 bg-red-50/50' : 'border-slate-200 bg-white'
-                      }`}
-                    >
+                    return (
+                      <article
+                        key={order.id}
+                        className={`border p-4 shadow-sm ${
+                          order.isOverdue
+                            ? 'border-red-300 bg-red-50/50'
+                            : hasPaymentIssue
+                              ? 'border-amber-300 bg-amber-50/70'
+                              : isCompleted
+                                ? 'border-emerald-200 bg-emerald-50/60'
+                                : 'border-slate-200 bg-white'
+                        }`}
+                      >
                       <button
                         type="button"
                         onClick={() => toggleOrderExpanded(order.id)}
@@ -903,6 +986,11 @@ function TeamOrdersDashboard() {
                             {order.isOverdue ? (
                               <span className="border border-red-300 bg-red-100 px-2 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-red-700">
                                 Overdue
+                              </span>
+                            ) : null}
+                            {hasPaymentIssue ? (
+                              <span className="border border-amber-300 bg-amber-100 px-2 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-amber-800">
+                                Payment Review
                               </span>
                             ) : null}
                           </div>
@@ -1129,9 +1217,21 @@ function TeamOrdersDashboard() {
                       </div>
                     ) : null}
 
+                    {hasPaymentIssue ? (
+                      <div className="mt-4 border border-amber-300 bg-amber-100 px-3 py-2 text-xs font-bold uppercase tracking-[0.14em] text-amber-800">
+                        Completed job still has payment outstanding. Review and update payment here or from operations.
+                      </div>
+                    ) : null}
+
                     {order.isOverdue ? (
                       <div className="mt-4 border border-red-300 bg-red-100 px-3 py-2 text-xs font-bold uppercase tracking-[0.14em] text-red-700">
                         Overdue job
+                      </div>
+                    ) : null}
+
+                    {isCompleted && !hasPaymentIssue ? (
+                      <div className="mt-4 border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold uppercase tracking-[0.14em] text-emerald-700">
+                        Completed job details remain available here for future review.
                       </div>
                     ) : null}
 
@@ -1153,28 +1253,116 @@ function TeamOrdersDashboard() {
                     </div>
                       </>
                     ) : null}
-                    </article>
-                  )
-                })
-              ) : (
-                <div className="border border-dashed border-slate-300 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">
-                  No queue jobs match your current search or filter.
+                      </article>
+                    )
+                  })
+                ) : (
+                  <div className="border border-dashed border-slate-300 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">
+                    No queue jobs match your current search or filter.
+                  </div>
+                )}
                 </div>
-              )}
-            </div>
 
-            {filteredQueueOrders.length > visibleQueueCount ? (
-              <div className="mt-5 flex justify-center">
-                <button
-                  type="button"
-                  onClick={() => setVisibleQueueCount((current) => current + 6)}
-                  className="border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-navy hover:text-navy"
-                >
-                  Show 6 More Jobs
-                </button>
+                {filteredQueueOrders.length > visibleQueueCount ? (
+                  <div className="mt-5 flex justify-center">
+                    <button
+                      type="button"
+                      onClick={() => setVisibleQueueCount((current) => current + 6)}
+                      className="border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-navy hover:text-navy"
+                    >
+                      Show 6 More Jobs
+                    </button>
+                  </div>
+                ) : null}
               </div>
-            ) : null}
+
+              <div className="space-y-6">
+                <div className="border border-slate-200 bg-slate-50 p-5">
+                  <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                        Today
+                      </p>
+                      <h3 className="mt-1 text-xl font-extrabold text-navy">Today&apos;s Numbers</h3>
+                    </div>
+                    <input
+                      type="date"
+                      value={summaryDate}
+                      onChange={(e) => setSummaryDate(e.target.value)}
+                      className="w-full border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-navy sm:w-auto"
+                    />
+                  </div>
+
+                  <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                    <MiniValueCard label="Jobs Created" value={dailySummary?.jobs_created ?? 0} />
+                    <MiniValueCard label="Jobs Completed" value={dailySummary?.jobs_completed ?? 0} />
+                    <MiniValueCard label="Payments Logged" value={dailySummary?.payments_received ?? 0} />
+                    <MiniValueCard label="Outstanding" value={formatCurrency(dailySummary?.outstanding_balances ?? 0)} />
+                  </div>
+                </div>
+
+                <div className="border border-red-200 bg-red-50/70 p-5">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-red-700">
+                        Attention
+                      </p>
+                      <h3 className="mt-1 text-xl font-extrabold text-red-900">Jobs Needing Attention</h3>
+                    </div>
+                    <span className="border border-red-200 bg-white px-3 py-1 text-sm font-semibold text-red-700">
+                      {attentionOrders.length} job{attentionOrders.length === 1 ? '' : 's'}
+                    </span>
+                  </div>
+
+                  <div className="mt-4 space-y-3">
+                    {attentionOrders.length ? (
+                      attentionOrders.map((order) => (
+                        <article key={`attention-${order.id}`} className="border border-red-200 bg-white px-4 py-3">
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                              <p className="font-bold text-slate-900">
+                                Job #{order.id} - {order.customerName || 'Walk-in'}
+                              </p>
+                              <p className="mt-1 text-sm text-slate-600">
+                                {titleCase(order.jobType)} - {order.description || 'No description added.'}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => focusOrder(order.id)}
+                              className="border border-red-300 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-100"
+                            >
+                              Open Job
+                            </button>
+                          </div>
+
+                          <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold uppercase tracking-[0.12em]">
+                            <span className="border border-slate-200 bg-slate-50 px-2 py-1 text-slate-600">
+                              {titleCase(order.status)}
+                            </span>
+                            <span className="border border-slate-200 bg-slate-50 px-2 py-1 text-slate-600">
+                              {titleCase(order.paymentStatus)}
+                            </span>
+                            <span className="border border-slate-200 bg-slate-50 px-2 py-1 text-slate-600">
+                              Balance {formatCurrency(order.balanceDue)}
+                            </span>
+                            <span className="border border-slate-200 bg-slate-50 px-2 py-1 text-slate-600">
+                              {order.deadline ? formatDateTime(order.deadline) : 'No deadline'}
+                            </span>
+                          </div>
+                        </article>
+                      ))
+                    ) : (
+                      <div className="border border-dashed border-red-200 bg-white px-4 py-10 text-center text-sm text-slate-500">
+                        No jobs need attention right now.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
           </section>
+          </div>
         </section>
       </main>
       <Footer />
@@ -1198,11 +1386,21 @@ function DeskStatCard({ label, value, tone = 'dark' }) {
   )
 }
 
-function MiniValueCard({ label, value }) {
+function MiniValueCard({ label, value, compact = false }) {
   return (
-    <div className="border border-slate-200 bg-slate-50 px-4 py-3">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">{label}</p>
-      <p className="mt-2 text-xl font-extrabold text-slate-900">{value}</p>
+    <div
+      className={`min-w-0 border border-slate-200 bg-slate-50 ${
+        compact ? 'px-3 py-3' : 'px-4 py-3'
+      }`}
+    >
+      <p
+        className={`font-semibold uppercase text-slate-500 ${
+          compact ? 'text-[10px] leading-4 tracking-[0.08em]' : 'text-[11px] tracking-[0.14em]'
+        }`}
+      >
+        {label}
+      </p>
+      <p className={`mt-2 font-extrabold text-slate-900 ${compact ? 'text-lg' : 'text-xl'}`}>{value}</p>
     </div>
   )
 }

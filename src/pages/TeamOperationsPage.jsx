@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import Footer from '../components/Footer'
 import TeamNavbar from '../components/TeamNavbar'
 import { useAuth } from '../context/authContext'
@@ -72,6 +73,7 @@ function getWATDateKey(value) {
 }
 
 function TeamOperationsPage() {
+  const navigate = useNavigate()
   const { isOwner } = useAuth()
   const [summaryDate, setSummaryDate] = useState(getTodayDateValue())
   const [dailySummary, setDailySummary] = useState(null)
@@ -143,8 +145,50 @@ function TeamOperationsPage() {
     return { total, walkIn, linkedJobs }
   }, [selectedDatePayments])
 
-  const activeJobs = useMemo(() => {
-    return jobs.filter((item) => item.status !== 'completed' && item.status !== 'cancelled')
+  const selectedDateCompletedJobs = useMemo(() => {
+    return jobs
+      .filter(
+        (item) =>
+          item.status === 'completed' &&
+          getWATDateKey(item.updated_at || item.created_at) === summaryDate,
+      )
+      .sort((left, right) => {
+        const leftTime = new Date(left.updated_at || left.created_at || 0).getTime()
+        const rightTime = new Date(right.updated_at || right.created_at || 0).getTime()
+        return rightTime - leftTime
+      })
+  }, [jobs, summaryDate])
+
+  const completedUnpaidJobs = useMemo(() => {
+    return selectedDateCompletedJobs.filter((job) => job.paymentStatus !== 'paid')
+  }, [selectedDateCompletedJobs])
+
+  function goToDeskUnpaidCompletedJob() {
+    if (!completedUnpaidJobs.length) return
+    const targetJobId = completedUnpaidJobs[0]?.id
+    if (!targetJobId) return
+    navigate(`/team/orders?focusJobId=${encodeURIComponent(targetJobId)}`)
+  }
+
+  const completedJobsSummary = useMemo(() => {
+    return selectedDateCompletedJobs.reduce(
+      (summary, job) => ({
+        count: summary.count + 1,
+        totalValue: summary.totalValue + Number(job.totalAmount || 0),
+        amountReceived: summary.amountReceived + Number(job.amountPaid || 0),
+        outstanding: summary.outstanding + Number(job.balanceDue || 0),
+      }),
+      {
+        count: 0,
+        totalValue: 0,
+        amountReceived: 0,
+        outstanding: 0,
+      },
+    )
+  }, [selectedDateCompletedJobs])
+
+  const payableJobs = useMemo(() => {
+    return jobs.filter((item) => item.status !== 'cancelled' && item.paymentStatus !== 'paid')
   }, [jobs])
 
   async function handleSavePrice() {
@@ -252,14 +296,13 @@ function TeamOperationsPage() {
           <div className="pointer-events-none absolute right-8 top-10 h-24 w-24 bg-white/10 blur-3xl" />
           <div className="container-shell relative">
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-yellow">
-              Photocopy + Daily Records
+              Daily Records
             </p>
             <h1 className="mt-3 text-3xl font-extrabold text-white sm:text-4xl">
-              Log photocopy readings, capture payments, and watch the day&apos;s money trail.
+              Record photocopy work, payments, and daily totals.
             </h1>
             <p className="mt-4 max-w-3xl text-sm leading-6 text-slate-100 sm:text-base">
-              This screen is for accountability: meter readings, expected vs actual cash, payment
-              log, and the daily summary in one place.
+              Enter photocopy readings, add payments, and check the day&apos;s summary in one place.
             </p>
           </div>
         </section>
@@ -277,9 +320,9 @@ function TeamOperationsPage() {
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                      Photocopy Counter
+                      Photocopy
                     </p>
-                    <h2 className="mt-1 text-2xl font-extrabold text-navy">Session Tracker</h2>
+                    <h2 className="mt-1 text-2xl font-extrabold text-navy">Record Copies</h2>
                   </div>
                   <div className="border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-600">
                     Price per copy: {formatCurrency(setting?.photocopyPricePerCopy ?? 0)}
@@ -376,9 +419,9 @@ function TeamOperationsPage() {
                 <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                      Daily Summary
+                      Today
                     </p>
-                    <h2 className="mt-1 text-2xl font-extrabold text-navy">Records for the Day</h2>
+                    <h2 className="mt-1 text-2xl font-extrabold text-navy">Day Summary</h2>
                   </div>
                   <input
                     type="date"
@@ -402,6 +445,8 @@ function TeamOperationsPage() {
                     label="Completed jobs without full payment"
                     value={dailySummary?.anomalies?.completed_unpaid_jobs ?? 0}
                     danger={(dailySummary?.anomalies?.completed_unpaid_jobs ?? 0) > 0}
+                    actionLabel={(dailySummary?.anomalies?.completed_unpaid_jobs ?? 0) > 0 ? 'View jobs' : ''}
+                    onAction={(dailySummary?.anomalies?.completed_unpaid_jobs ?? 0) > 0 ? goToDeskUnpaidCompletedJob : null}
                   />
                   <AlertRow
                     label="Photocopy discrepancies"
@@ -419,11 +464,101 @@ function TeamOperationsPage() {
 
             <section className="space-y-6">
               <div className="border border-slate-200 bg-white p-5 shadow-sm md:p-6">
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                    Payment Recorder
-                  </p>
-                  <h2 className="mt-1 text-2xl font-extrabold text-navy">Log Payment</h2>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                      Completed Jobs
+                    </p>
+                    <h2 className="mt-1 text-2xl font-extrabold text-navy">Jobs Done Today</h2>
+                  </div>
+                  <div className="border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-600">
+                    {summaryDate}
+                  </div>
+                </div>
+
+                <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                  <ValueCard label="Jobs Done" value={completedJobsSummary.count} />
+                  <ValueCard
+                    label="Completed Job Value"
+                    value={formatCurrency(completedJobsSummary.totalValue)}
+                  />
+                  <ValueCard
+                    label="Amount Collected"
+                    value={formatCurrency(completedJobsSummary.amountReceived)}
+                  />
+                  <ValueCard
+                    label="Outstanding Balance"
+                    value={formatCurrency(completedJobsSummary.outstanding)}
+                    tone={completedJobsSummary.outstanding > 0 ? 'alert' : 'normal'}
+                  />
+                </div>
+
+                <div className="mt-5 space-y-3">
+                  {completedUnpaidJobs.length ? (
+                    <div id="completed-unpaid-jobs" className="border border-amber-300 bg-amber-50 px-4 py-3">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-700">
+                        Needs Payment Follow-up
+                      </p>
+                      <p className="mt-1 text-sm text-amber-900">
+                        {completedUnpaidJobs.length} completed job{completedUnpaidJobs.length === 1 ? '' : 's'} still have outstanding payment.
+                      </p>
+                    </div>
+                  ) : null}
+
+                  {selectedDateCompletedJobs.length ? (
+                    selectedDateCompletedJobs.map((job) => (
+                      <article key={job.id} className="border border-slate-200 bg-slate-50 px-4 py-3">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <p className="font-bold text-slate-900">
+                              Job #{job.id} - {job.customerName || 'Walk-in'}
+                            </p>
+                            <p className="mt-1 text-sm text-slate-500">
+                              {titleCase(job.jobType)} - Completed {formatDateTime(job.updated_at || job.created_at)}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-base font-extrabold text-navy">
+                              {formatCurrency(job.totalAmount)}
+                            </p>
+                            <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+                              {titleCase(job.paymentStatus)}
+                            </p>
+                          </div>
+                        </div>
+
+                        <p className="mt-3 text-sm leading-6 text-slate-600">
+                          {job.description || 'No job description added.'}
+                        </p>
+
+                        <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                          <div className="border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600">
+                            Paid: <span className="font-bold text-slate-900">{formatCurrency(job.amountPaid)}</span>
+                          </div>
+                          <div className="border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600">
+                            Balance:{' '}
+                            <span className="font-bold text-slate-900">{formatCurrency(job.balanceDue)}</span>
+                          </div>
+                          <div className="border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600">
+                            Qty: <span className="font-bold text-slate-900">{job.quantity || 1}</span>
+                          </div>
+                        </div>
+                      </article>
+                    ))
+                  ) : (
+                    <div className="border border-dashed border-slate-300 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">
+                      No completed jobs recorded for this date yet.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="border border-slate-200 bg-white p-5 shadow-sm md:p-6">
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                      Payments
+                    </p>
+                  <h2 className="mt-1 text-2xl font-extrabold text-navy">Add Payment</h2>
                 </div>
 
                 <form onSubmit={handleSubmitPayment} className="mt-6 space-y-4">
@@ -463,16 +598,16 @@ function TeamOperationsPage() {
 
                     {paymentForm.mode === 'job' ? (
                       <label className="block text-sm font-semibold text-slate-700">
-                        Link to active job
+                        Link to job with balance
                         <select
                           value={paymentForm.jobId}
                           onChange={(e) => setPaymentForm((current) => ({ ...current, jobId: e.target.value }))}
                           className="mt-2 w-full border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-navy"
                         >
                           <option value="">Select job</option>
-                          {activeJobs.map((job) => (
+                          {payableJobs.map((job) => (
                             <option key={job.id} value={job.id}>
-                              #{job.id} - {job.customerName || 'Walk-in'} - {titleCase(job.jobType)}
+                              #{job.id} - {job.customerName || 'Walk-in'} - {titleCase(job.jobType)} - {formatCurrency(job.balanceDue)}
                             </option>
                           ))}
                         </select>
@@ -523,9 +658,9 @@ function TeamOperationsPage() {
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                      Payment Log
+                      Payment History
                     </p>
-                    <h2 className="mt-1 text-2xl font-extrabold text-navy">Entries for {summaryDate}</h2>
+                    <h2 className="mt-1 text-2xl font-extrabold text-navy">Payments for {summaryDate}</h2>
                   </div>
                   {loading ? <span className="text-sm text-slate-500">Loading...</span> : null}
                 </div>
@@ -571,9 +706,9 @@ function TeamOperationsPage() {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                  Photocopy Sessions
+                  Photocopy History
                 </p>
-                <h2 className="mt-1 text-2xl font-extrabold text-navy">Entries for {summaryDate}</h2>
+                <h2 className="mt-1 text-2xl font-extrabold text-navy">Sessions for {summaryDate}</h2>
               </div>
               <span className="border border-slate-200 bg-slate-50 px-3 py-1 text-sm font-semibold text-slate-600">
                 {selectedDateSessions.length} session{selectedDateSessions.length === 1 ? '' : 's'}
@@ -652,7 +787,7 @@ function ValueCard({ label, value, tone = 'normal', compact = false }) {
   )
 }
 
-function AlertRow({ label, value, danger }) {
+function AlertRow({ label, value, danger, actionLabel = '', onAction = null }) {
   return (
     <div
       className={`flex flex-col gap-2 border px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between ${
@@ -662,7 +797,18 @@ function AlertRow({ label, value, danger }) {
       }`}
     >
       <span className="font-semibold">{label}</span>
-      <span className="text-base font-extrabold">{value}</span>
+      <div className="flex items-center gap-3">
+        <span className="text-base font-extrabold">{value}</span>
+        {actionLabel && onAction ? (
+          <button
+            type="button"
+            onClick={onAction}
+            className="border border-current px-2 py-1 text-xs font-bold uppercase tracking-[0.12em] transition hover:bg-white/50"
+          >
+            {actionLabel}
+          </button>
+        ) : null}
+      </div>
     </div>
   )
 }
