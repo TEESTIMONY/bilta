@@ -116,7 +116,7 @@ function ProductDetails() {
       <main>
         <section className="container-shell py-16 md:py-20">
           <Link to="/products" className="text-sm font-semibold text-navy hover:underline">
-            â† Back to Products
+            ← Back to Products
           </Link>
 
           <div className="mt-6 grid gap-8 lg:grid-cols-[1.1fr_1fr]">
