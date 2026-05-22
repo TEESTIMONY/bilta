@@ -3,6 +3,7 @@ import Navbar from '../components/Navbar'
 import Hero from '../components/Hero'
 import Intro from '../components/Intro'
 import Services from '../components/Services'
+import PopularProducts from '../components/PopularProducts'
 import WhyBilta from '../components/WhyBilta'
 import Solutions from '../components/Solutions'
 import HowItWorks from '../components/HowItWorks'
@@ -39,6 +40,9 @@ function Home() {
         </div>
         <div className="home-section-shell" data-home-reveal style={{ transitionDelay: '120ms' }}>
           <Services />
+        </div>
+        <div className="home-section-shell" data-home-reveal style={{ transitionDelay: '130ms' }}>
+          <PopularProducts />
         </div>
         <div className="home-section-shell" data-home-reveal style={{ transitionDelay: '140ms' }}>
           <WhyBilta />

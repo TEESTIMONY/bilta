@@ -482,6 +482,17 @@ function TeamOrdersDashboard() {
       return Number(selectedCustomerId)
     }
 
+    if (customerMode === 'walk_in') {
+      const walkInCustomer = await createCustomer({
+        full_name: 'Walk-in Customer',
+        phone: '',
+        business_name: '',
+        customer_type: 'walk_in',
+      })
+
+      return walkInCustomer.id
+    }
+
     if (!form.customerName.trim()) {
       throw new Error('Customer name is required before saving this job.')
     }
@@ -652,7 +663,7 @@ function TeamOrdersDashboard() {
                   </div>
                 ) : null}
 
-                {customerMode === 'new' || customerMode === 'walk_in' ? (
+                {customerMode === 'new' ? (
                   <div className="grid gap-3 border border-slate-200 bg-slate-50 p-4 md:grid-cols-2">
                     <label className="block text-sm font-semibold text-slate-700">
                       Customer name
