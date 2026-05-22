@@ -18,11 +18,11 @@ function formatPrice(value) {
   const raw = String(value ?? '').trim()
   if (!raw) return 'Price on request'
 
-  const numericCandidate = raw.replace(/[â‚¦,\s]/g, '')
+  const numericCandidate = raw.replace(/[₦,\s]/g, '')
   if (/^\d+(\.\d+)?$/.test(numericCandidate)) {
     const amount = Number(numericCandidate)
     if (Number.isFinite(amount)) {
-      return `â‚¦${amount.toLocaleString('en-NG')}`
+      return `₦${amount.toLocaleString('en-NG')}`
     }
   }
 
