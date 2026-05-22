@@ -332,12 +332,12 @@ function Products() {
                   <h2 className="mt-2 text-2xl font-extrabold text-slate-900">
                     {hasCatalogProducts
                       ? 'Try a broader search or switch categories.'
-                      : 'No products have been published yet.'}
+                      : 'Products coming soon.'}
                   </h2>
                   <p className="mt-3 max-w-xl text-sm leading-6 text-slate-600">
                     {hasCatalogProducts
                       ? 'We couldn&apos;t find products matching your current search. Clear the search box or return to All Products to explore the full catalog.'
-                      : 'The shop is connected to your backend catalog, and it will display products here once they are added and published from the CMS.'}
+                      : 'Check back shortly for available products.'}
                   </p>
                   {hasCatalogProducts || hasActiveSearch || activeFilter !== 'All Products' ? (
                     <div className="mt-5 flex flex-wrap gap-3">
