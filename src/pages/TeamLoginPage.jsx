@@ -46,9 +46,13 @@ function TeamLoginPage() {
             <div className="relative z-10 max-w-xl px-2 text-white">
               <Link
                 to="/"
-                className="inline-block font-sora text-3xl font-extrabold tracking-tight text-white transition-transform duration-300 hover:scale-105"
+                className="inline-flex items-center transition-transform duration-300 hover:scale-105"
               >
-                BILTA<span className="text-yellow">.</span>
+                <img
+                  src="/Logo_image.png"
+                  alt="Bilta logo"
+                  className="h-12 w-auto object-contain sm:h-14"
+                />
               </Link>
               <p className="text-xs font-semibold uppercase tracking-[0.28em] text-yellow">
                 Bilta Internal

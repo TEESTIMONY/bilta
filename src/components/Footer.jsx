@@ -5,9 +5,11 @@ function Footer() {
     <footer className="bg-navy-deeper text-white">
       <div className="container-shell grid gap-8 py-12 md:grid-cols-3">
         <div>
-          <p className="font-sora text-2xl font-extrabold tracking-tight">
-            BILTA<span className="text-yellow">.</span>
-          </p>
+          <img
+            src="/Logo_image.png"
+            alt="Bilta logo"
+            className="h-12 w-auto object-contain"
+          />
           <p className="mt-3 max-w-sm text-sm text-slate-300">
             Bilta helps businesses print, brand, and package themselves properly.
           </p>

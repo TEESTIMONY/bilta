@@ -43,8 +43,12 @@ function TeamNavbar() {
       <nav className="container-shell py-3">
         <div className="flex items-start justify-between gap-3 sm:hidden">
           <div className="min-w-0">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-yellow">Bilta Internal</p>
-            <h1 className="text-lg font-extrabold leading-tight text-white">Team CMS</h1>
+            <img
+              src="/Logo_image.png"
+              alt="Bilta logo"
+              className="h-11 w-auto object-contain"
+            />
+            <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-yellow">Team CMS</p>
           </div>
 
           <button
@@ -118,8 +122,12 @@ function TeamNavbar() {
 
         <div className="hidden flex-wrap items-center justify-between gap-3 sm:flex">
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-yellow">Bilta Internal</p>
-            <h1 className="text-lg font-extrabold leading-tight text-white">Team CMS</h1>
+            <img
+              src="/Logo_image.png"
+              alt="Bilta logo"
+              className="h-12 w-auto object-contain"
+            />
+            <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-yellow">Team CMS</p>
           </div>
 
           <div className="flex flex-wrap items-center justify-end gap-2">

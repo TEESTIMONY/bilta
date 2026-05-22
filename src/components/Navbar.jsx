@@ -66,9 +66,13 @@ function NavbarContent({ location }) {
         <div className="flex items-center justify-between gap-4">
           <Link
             to="/"
-            className="font-sora text-2xl font-extrabold tracking-tight text-navy transition-transform duration-300 hover:scale-105"
+            className="inline-flex items-center transition-transform duration-300 hover:scale-105"
           >
-            BILTA<span className="text-yellow">.</span>
+            <img
+              src="/Logo_image.png"
+              alt="Bilta logo"
+              className="h-12 w-auto object-contain sm:h-14"
+            />
           </Link>
 
           <div className="hidden items-center gap-5 lg:flex">
