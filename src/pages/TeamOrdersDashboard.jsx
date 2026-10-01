@@ -1350,92 +1350,108 @@ function TeamOrdersDashboard() {
                       })()
                     ) : null}
 
-                    <div className="mt-4 border border-slate-200 bg-slate-50 px-4 py-4">
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                        <div>
-                          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
-                            Queue Management
-                          </p>
-                          <h4 className="mt-1 text-base font-extrabold text-slate-900">
-                            Update quantity, pricing, payment, and deadline
-                          </h4>
+                    {isOwner ? (
+                      <div className="mt-4 border border-slate-200 bg-slate-50 px-4 py-4">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                          <div>
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+                              Queue Management
+                            </p>
+                            <h4 className="mt-1 text-base font-extrabold text-slate-900">
+                              Update quantity, pricing, payment, and deadline
+                            </h4>
+                          </div>
                         </div>
-                        {!isOwner ? (
-                          <span className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
-                            Owner/admin can edit pricing and payment
-                          </span>
-                        ) : null}
+
+                        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                          <label className="text-sm font-semibold text-slate-700">
+                            Quantity
+                            <input
+                              type="number"
+                              min="1"
+                              value={queueDraft.quantity}
+                              onChange={(e) => updateQueueEdit(order.id, 'quantity', e.target.value)}
+                              className="mt-2 w-full border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-navy disabled:cursor-not-allowed disabled:bg-slate-100"
+                            />
+                          </label>
+
+                          <label className="text-sm font-semibold text-slate-700">
+                            Unit price
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={queueDraft.unitPrice}
+                              onChange={(e) => updateQueueEdit(order.id, 'unitPrice', e.target.value)}
+                              className="mt-2 w-full border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-navy disabled:cursor-not-allowed disabled:bg-slate-100"
+                            />
+                          </label>
+
+                          <label className="text-sm font-semibold text-slate-700">
+                            Amount paid (correction)
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={queueDraft.amountPaid}
+                              onChange={(e) => updateQueueEdit(order.id, 'amountPaid', e.target.value)}
+                              className="mt-2 w-full border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-navy disabled:cursor-not-allowed disabled:bg-slate-100"
+                            />
+                          </label>
+
+                          <label className="text-sm font-semibold text-slate-700">
+                            Deadline
+                            <input
+                              type="datetime-local"
+                              value={queueDraft.deadline}
+                              onChange={(e) => updateQueueEdit(order.id, 'deadline', e.target.value)}
+                              className="mt-2 w-full border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-navy"
+                            />
+                          </label>
+                        </div>
+
+                        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                          <MiniValueCard label="Edited Total" value={formatCurrency(draftTotal)} />
+                          <MiniValueCard label="Edited Balance" value={formatCurrency(draftBalance)} />
+                        </div>
+
+                        <div className="mt-4 flex flex-col items-stretch gap-3 border-t border-slate-200 pt-4 sm:flex-row sm:items-center sm:justify-between">
+                          <p className="text-sm text-slate-600">
+                            Project details stay visible here while you adjust quantity, payment, and due date.
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => handleSaveQueueDetails(order)}
+                            disabled={savingOrderId === order.id}
+                            className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+                          >
+                            {savingOrderId === order.id ? 'Saving...' : 'Save Queue Details'}
+                          </button>
+                        </div>
                       </div>
-
-                      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                        <label className="text-sm font-semibold text-slate-700">
-                          Quantity
-                          <input
-                            type="number"
-                            min="1"
-                            value={queueDraft.quantity}
-                            onChange={(e) => updateQueueEdit(order.id, 'quantity', e.target.value)}
-                            disabled={!isOwner}
-                            className="mt-2 w-full border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-navy disabled:cursor-not-allowed disabled:bg-slate-100"
-                          />
-                        </label>
-
-                        <label className="text-sm font-semibold text-slate-700">
-                          Unit price
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={queueDraft.unitPrice}
-                            onChange={(e) => updateQueueEdit(order.id, 'unitPrice', e.target.value)}
-                            disabled={!isOwner}
-                            className="mt-2 w-full border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-navy disabled:cursor-not-allowed disabled:bg-slate-100"
-                          />
-                        </label>
-
-                        <label className="text-sm font-semibold text-slate-700">
-                          Amount paid now
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={queueDraft.amountPaid}
-                            onChange={(e) => updateQueueEdit(order.id, 'amountPaid', e.target.value)}
-                            disabled={!isOwner}
-                            className="mt-2 w-full border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-navy disabled:cursor-not-allowed disabled:bg-slate-100"
-                          />
-                        </label>
-
-                        <label className="text-sm font-semibold text-slate-700">
-                          Deadline
-                          <input
-                            type="datetime-local"
-                            value={queueDraft.deadline}
-                            onChange={(e) => updateQueueEdit(order.id, 'deadline', e.target.value)}
-                            className="mt-2 w-full border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-navy"
-                          />
-                        </label>
+                    ) : (
+                      <div className="mt-4 border border-slate-200 bg-slate-50 px-4 py-4">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                          <label className="flex-1 text-sm font-semibold text-slate-700">
+                            Deadline
+                            <input
+                              type="datetime-local"
+                              value={queueDraft.deadline}
+                              onChange={(e) => updateQueueEdit(order.id, 'deadline', e.target.value)}
+                              className="mt-2 w-full border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-navy"
+                            />
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => handleSaveQueueDetails(order)}
+                            disabled={savingOrderId === order.id}
+                            className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+                          >
+                            {savingOrderId === order.id ? 'Saving...' : 'Save Deadline'}
+                          </button>
+                        </div>
                       </div>
-
-                      <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                        <MiniValueCard label="Edited Total" value={formatCurrency(draftTotal)} />
-                        <MiniValueCard label="Edited Balance" value={formatCurrency(draftBalance)} />
-                      </div>
-
-                      <div className="mt-4 flex flex-col items-stretch gap-3 border-t border-slate-200 pt-4 sm:flex-row sm:items-center sm:justify-between">
-                        <p className="text-sm text-slate-600">
-                          Project details stay visible here while you adjust quantity, payment, and due date.
-                        </p>
-                        <button
-                          type="button"
-                          onClick={() => handleSaveQueueDetails(order)}
-                          disabled={savingOrderId === order.id}
-                          className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
-                        >
-                          {savingOrderId === order.id ? 'Saving...' : 'Save Queue Details'}
-                        </button>
-                      </div>
-                    </div>
+                    )}
 
                     {order.attachments?.length ? (
                       <div className="mt-4 border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700">
