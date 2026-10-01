@@ -78,6 +78,13 @@ export function AuthProvider({ children }) {
     setUser(null)
   }
 
+  // Re-read the signed-in user, e.g. after their name is changed in Settings.
+  async function refreshUser() {
+    const currentUser = await getCmsCurrentUser()
+    setUser(currentUser)
+    return currentUser
+  }
+
   const value = useMemo(() => {
     const isOwner = Boolean(user?.is_superuser || user?.role === 'owner')
     return {
@@ -86,6 +93,7 @@ export function AuthProvider({ children }) {
       login,
       acceptInvitation,
       logout,
+      refreshUser,
       isAuthenticated: Boolean(user),
       isOwner,
       isStaff: Boolean(user),

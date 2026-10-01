@@ -35,7 +35,7 @@ function formatDateTime(value) {
 }
 
 function TeamSettingsPage() {
-  const { user } = useAuth()
+  const { user, refreshUser } = useAuth()
   const [setting, setSetting] = useState(null)
   const [accounts, setAccounts] = useState([])
   const [invitations, setInvitations] = useState([])
@@ -48,6 +48,7 @@ function TeamSettingsPage() {
   const [createForm, setCreateForm] = useState(defaultCreateForm)
   const [latestInvitation, setLatestInvitation] = useState(null)
   const [passwordDrafts, setPasswordDrafts] = useState({})
+  const [nameDrafts, setNameDrafts] = useState({})
   const [loading, setLoading] = useState(true)
   const [savingSettings, setSavingSettings] = useState(false)
   const [creatingAccount, setCreatingAccount] = useState(false)
@@ -166,6 +167,33 @@ function TeamSettingsPage() {
       setStatusMessage(`${account.username} has been ${account.is_active ? 'deactivated' : 'reactivated'}.`)
     } catch (error) {
       setStatusMessage(`Could not update account status: ${error.message}`)
+    } finally {
+      setUpdatingAccountId(null)
+    }
+  }
+
+  async function handleSaveName(account) {
+    const draft = nameDrafts[account.id] || {}
+    const firstName = String(draft.firstName ?? account.first_name ?? '').trim()
+    const lastName = String(draft.lastName ?? account.last_name ?? '').trim()
+    if (!firstName) {
+      setStatusMessage('Enter a first name.')
+      return
+    }
+
+    setUpdatingAccountId(account.id)
+    try {
+      await updateStaffAccount(account.id, { first_name: firstName, last_name: lastName })
+      setNameDrafts((current) => {
+        const next = { ...current }
+        delete next[account.id]
+        return next
+      })
+      await loadSettingsPage()
+      if (user?.id === account.id) await refreshUser()
+      setStatusMessage(`Name saved: ${`${firstName} ${lastName}`.trim()}.`)
+    } catch (error) {
+      setStatusMessage(`Could not save the name: ${error.message}`)
     } finally {
       setUpdatingAccountId(null)
     }
@@ -563,6 +591,48 @@ function TeamSettingsPage() {
 
                         {isExpanded ? (
                           <div className="mt-4 grid gap-4 border-t border-slate-200 pt-4 xl:grid-cols-[180px_minmax(0,1fr)]">
+                            <div className="xl:col-span-2">
+                              <p className="text-sm font-semibold text-slate-700">Name shown in the CMS</p>
+                              <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+                                <label className="block text-sm text-slate-600">
+                                  First name
+                                  <input
+                                    value={nameDrafts[account.id]?.firstName ?? account.first_name ?? ''}
+                                    onChange={(e) =>
+                                      setNameDrafts((current) => ({
+                                        ...current,
+                                        [account.id]: { ...current[account.id], firstName: e.target.value },
+                                      }))
+                                    }
+                                    className="mt-1 min-h-[44px] w-full border border-slate-300 bg-white px-3 text-[15px] outline-none transition focus:border-navy"
+                                    placeholder="e.g. Tolu"
+                                  />
+                                </label>
+                                <label className="block text-sm text-slate-600">
+                                  Last name
+                                  <input
+                                    value={nameDrafts[account.id]?.lastName ?? account.last_name ?? ''}
+                                    onChange={(e) =>
+                                      setNameDrafts((current) => ({
+                                        ...current,
+                                        [account.id]: { ...current[account.id], lastName: e.target.value },
+                                      }))
+                                    }
+                                    className="mt-1 min-h-[44px] w-full border border-slate-300 bg-white px-3 text-[15px] outline-none transition focus:border-navy"
+                                    placeholder="e.g. Adebayo"
+                                  />
+                                </label>
+                                <button
+                                  type="button"
+                                  onClick={() => handleSaveName(account)}
+                                  disabled={updatingAccountId === account.id}
+                                  className="min-h-[44px] border border-navy px-4 text-sm font-semibold text-navy transition hover:bg-navy hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  Save name
+                                </button>
+                              </div>
+                            </div>
+
                             <label className="block text-sm font-semibold text-slate-700">
                               Role
                               <select
