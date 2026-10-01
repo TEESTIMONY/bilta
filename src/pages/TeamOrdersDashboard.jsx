@@ -215,10 +215,13 @@ function TeamOrdersDashboard() {
         Promise.allSettled(linkedJobIds.map((jobId) => getJob(jobId))),
       ])
 
-      const queueIds = new Set(queueData.orders.map((order) => order.id))
-      const linkedJobs = linkedJobResults
-        .filter((result) => result.status === 'fulfilled' && !queueIds.has(result.value.id))
-        .map((result) => result.value)
+      const seenIds = new Set(queueData.orders.map((order) => order.id))
+      const linkedJobs = []
+      for (const result of linkedJobResults) {
+        if (result.status !== 'fulfilled' || seenIds.has(result.value.id)) continue
+        seenIds.add(result.value.id)
+        linkedJobs.push(result.value)
+      }
       setMissingJobIds(linkedJobIds.filter((_, index) => linkedJobResults[index].status === 'rejected'))
 
       setOrders([...queueData.orders, ...linkedJobs])
@@ -287,7 +290,7 @@ function TeamOrdersDashboard() {
         setSearchParams(nextParams, { replace: true })
       } else if (!linkedJobIds.includes(targetId)) {
         // Not one of today's jobs: load it alongside the queue.
-        setLinkedJobIds((current) => [...current, targetId])
+        setLinkedJobIds((current) => (current.includes(targetId) ? current : [...current, targetId]))
       }
       return
     }
