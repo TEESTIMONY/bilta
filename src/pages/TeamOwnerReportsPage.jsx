@@ -1,13 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import Footer from '../components/Footer'
+import TeamPageHeader from '../components/TeamPageHeader'
 import TeamNavbar from '../components/TeamNavbar'
 import { getDailySummary, getOrdersData } from '../services/ordersService'
-import {
-  getAuditLogsData,
-  getPaymentRecordsData,
-  getPhotocopySessionsData,
-} from '../services/operationsService'
+import { getAuditLogsData, getPhotocopySessionsData } from '../services/operationsService'
+
+const ACTIVITY_PAGE_SIZE = 10
 
 function getTodayDateValue() {
   const today = new Date()
@@ -25,17 +23,20 @@ function formatCurrency(value) {
   }).format(Number(value || 0))
 }
 
-function formatDateTime(value) {
-  if (!value) return 'No timestamp'
+function formatTime(value) {
   const parsed = new Date(value)
-  if (Number.isNaN(parsed.getTime())) return 'No timestamp'
-  return parsed.toLocaleString('en-NG', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  })
+  if (Number.isNaN(parsed.getTime())) return ''
+  return parsed.toLocaleTimeString('en-NG', { hour: 'numeric', minute: '2-digit' })
+}
+
+function formatDay(value) {
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return ''
+  return parsed.toLocaleDateString('en-NG', { day: 'numeric', month: 'short' })
 }
 
 function titleCase(value) {
+  if (value === 'walk_in') return 'Walk-in'
   return String(value || '')
     .split('_')
     .filter(Boolean)
@@ -54,529 +55,398 @@ function getWATDateKey(value) {
   }).format(parsed)
 }
 
+function jobLabel(id, customerName) {
+  return customerName ? `job #${id} (${customerName})` : `job #${id}`
+}
+
+// One plain sentence for each activity entry, e.g. "recorded ₦5,000 for job #6 (UniqueZayt)".
+function describeActivity(entry) {
+  const m = entry.metadata || {}
+  const id = entry.objectId
+  const key = `${entry.modelName}:${entry.action}`
+
+  switch (key) {
+    case 'Job:create':
+      return `added ${jobLabel(id, m.customer_name)}${m.total ? ` for ${formatCurrency(m.total)}` : ''}`
+    case 'Job:update':
+      if (m.status_to) {
+        return `moved ${jobLabel(id, m.customer_name)} from ${titleCase(m.status_from)} to ${titleCase(m.status_to)}`
+      }
+      if (m.paid_to) {
+        return `corrected the amount paid on ${jobLabel(id, m.customer_name)} from ${formatCurrency(m.paid_from)} to ${formatCurrency(m.paid_to)}`
+      }
+      return `edited ${jobLabel(id, m.customer_name)}`
+    case 'Job:discount':
+      return `gave ${formatCurrency(m.discount_amount)} off job #${m.job_id || id}`
+    case 'PaymentRecord:create':
+      if (!m.amount) return 'recorded a payment'
+      return m.job_id
+        ? `recorded ${formatCurrency(m.amount)} for ${jobLabel(m.job_id, m.customer_name)}`
+        : `recorded ${formatCurrency(m.amount)} for ${m.service_label || 'a walk-in service'}`
+    case 'PaymentRecord:update':
+      return m.amount
+        ? `changed a payment${m.job_id ? ` on job #${m.job_id}` : ''} from ${formatCurrency(m.amount_from)} to ${formatCurrency(m.amount)}`
+        : 'changed a payment'
+    case 'PaymentRecord:delete':
+      return m.amount
+        ? `deleted a ${formatCurrency(m.amount)} payment${m.job_id ? ` on job #${m.job_id}` : ''}`
+        : 'deleted a payment'
+    case 'Customer:create':
+      return `added customer ${m.name || `#${id}`}`
+    case 'Customer:update':
+      return `updated customer ${m.name || `#${id}`}`
+    case 'PhotocopySession:create':
+      return m.copies !== undefined
+        ? `logged ${m.copies} photocopies (${formatCurrency(m.collected)} collected)`
+        : 'logged a photocopy session'
+    case 'StaffAccount:update':
+      return `updated ${m.username || 'a staff'} account`
+    case 'StaffAccount:reset_password':
+      return `reset the password for ${m.username || 'a staff account'}`
+    case 'StaffInvitation:create':
+      return `invited ${m.email || 'someone'} to join as ${titleCase(m.role || 'staff')}`
+    default:
+      return `${titleCase(entry.action).toLowerCase()} ${titleCase(entry.modelName).toLowerCase()} #${id}`
+  }
+}
+
+function activityJobId(entry) {
+  const m = entry.metadata || {}
+  if (entry.modelName === 'Job') return Number(m.job_id || entry.objectId) || null
+  if (entry.modelName === 'PaymentRecord') return Number(m.job_id) || null
+  return null
+}
+
 function TeamOwnerReportsPage() {
   const navigate = useNavigate()
   const [reportDate, setReportDate] = useState(getTodayDateValue())
   const [dailySummary, setDailySummary] = useState(null)
   const [jobs, setJobs] = useState([])
-  const [payments, setPayments] = useState([])
   const [sessions, setSessions] = useState([])
-  const [auditLogs, setAuditLogs] = useState([])
-  const [staffFilter, setStaffFilter] = useState('all')
-  const [auditSearch, setAuditSearch] = useState('')
+  const [activity, setActivity] = useState([])
+  const [personFilter, setPersonFilter] = useState('all')
+  const [search, setSearch] = useState('')
+  const [visibleCount, setVisibleCount] = useState(ACTIVITY_PAGE_SIZE)
   const [loading, setLoading] = useState(true)
   const [statusMessage, setStatusMessage] = useState('')
 
-  const loadOwnerData = useCallback(async (targetDate = reportDate) => {
+  const loadReport = useCallback(async (targetDate) => {
     setLoading(true)
+    setStatusMessage('')
     try {
-      const [summaryData, ordersData, paymentData, sessionData, auditData] = await Promise.all([
+      const [summaryData, ordersData, sessionData, auditData] = await Promise.all([
         getDailySummary(targetDate),
         getOrdersData(),
-        getPaymentRecordsData(),
-        getPhotocopySessionsData(),
-        getAuditLogsData(),
+        getPhotocopySessionsData(targetDate),
+        getAuditLogsData(targetDate),
       ])
-
       setDailySummary(summaryData.summary)
       setJobs(ordersData.orders)
-      setPayments(paymentData.payments)
       setSessions(sessionData.sessions)
-      setAuditLogs(auditData.auditLogs)
+      setActivity(auditData.auditLogs)
     } catch (error) {
-      setStatusMessage(`Failed to load owner reports: ${error.message}`)
+      setStatusMessage(`Could not load the report: ${error.message}`)
     } finally {
       setLoading(false)
     }
-  }, [reportDate])
+  }, [])
 
   useEffect(() => {
-    loadOwnerData(reportDate)
-  }, [loadOwnerData, reportDate])
+    loadReport(reportDate)
+    setVisibleCount(ACTIVITY_PAGE_SIZE)
+  }, [loadReport, reportDate])
 
-  const selectedDateCompletedJobs = useMemo(() => {
-    return jobs.filter(
-      (job) =>
-        job.status === 'completed' &&
-        getWATDateKey(job.updated_at || job.created_at) === reportDate,
-    )
-  }, [jobs, reportDate])
+  const openJob = (jobId) => navigate(`/team/orders?focusJobId=${encodeURIComponent(jobId)}`)
 
-  const selectedDatePayments = useMemo(() => {
-    return payments.filter((payment) => getWATDateKey(payment.createdAt) === reportDate)
-  }, [payments, reportDate])
+  const doneButOwing = useMemo(
+    () =>
+      jobs.filter(
+        (job) =>
+          job.status === 'completed' &&
+          Number(job.balanceDue || 0) > 0 &&
+          getWATDateKey(job.updated_at || job.created_at) === reportDate,
+      ),
+    [jobs, reportDate],
+  )
 
-  const selectedDateSessions = useMemo(() => {
-    return sessions.filter((session) => getWATDateKey(session.createdAt) === reportDate)
-  }, [sessions, reportDate])
+  const overdueJobs = useMemo(
+    () => jobs.filter((job) => job.status !== 'completed' && job.status !== 'cancelled' && job.isOverdue),
+    [jobs],
+  )
 
-  const selectedDateAuditLogs = useMemo(() => {
-    return auditLogs.filter((entry) => getWATDateKey(entry.createdAt) === reportDate)
-  }, [auditLogs, reportDate])
+  const photocopyShort = useMemo(
+    () => sessions.reduce((sum, session) => sum + Math.max(0, -Number(session.revenueGap || 0)), 0),
+    [sessions],
+  )
 
-  const staffOptions = useMemo(() => {
-    const names = new Set()
-
-    selectedDatePayments.forEach((payment) => {
-      if (payment.recordedByName) names.add(payment.recordedByName)
-    })
-    selectedDateSessions.forEach((session) => {
-      if (session.staffName) names.add(session.staffName)
-    })
-    selectedDateAuditLogs.forEach((entry) => {
-      if (entry.performedByName) names.add(entry.performedByName)
-    })
-
-    return Array.from(names).sort((left, right) => left.localeCompare(right))
-  }, [selectedDateAuditLogs, selectedDatePayments, selectedDateSessions])
-
-  const completedUnpaidJobs = useMemo(() => {
-    return selectedDateCompletedJobs.filter((job) => job.paymentStatus !== 'paid')
-  }, [selectedDateCompletedJobs])
-
-  function handleViewUnpaidCompletedJobs() {
-    if (!completedUnpaidJobs.length) return
-    const targetJobId = completedUnpaidJobs[0]?.id
-    if (!targetJobId) return
-    navigate(`/team/orders?focusJobId=${encodeURIComponent(targetJobId)}`)
-  }
-
-  const overdueActiveJobs = useMemo(() => {
-    return jobs.filter((job) => job.status !== 'completed' && job.status !== 'cancelled' && job.isOverdue)
-  }, [jobs])
-
-  const filteredAuditLogs = useMemo(() => {
-    const query = auditSearch.trim().toLowerCase()
-
-    return selectedDateAuditLogs.filter((entry) => {
-      if (staffFilter !== 'all' && entry.performedByName !== staffFilter) {
-        return false
-      }
-
-      if (!query) return true
-
-      const haystack = [
-        entry.action,
-        entry.modelName,
-        entry.performedByName,
-        entry.reason,
-        entry.objectId,
-      ]
-        .join(' ')
-        .toLowerCase()
-
-      return haystack.includes(query)
-    })
-  }, [auditSearch, selectedDateAuditLogs, staffFilter])
-
-  const flaggedAuditLogs = useMemo(() => {
-    return filteredAuditLogs.filter(
-      (entry) => entry.modelName === 'PaymentRecord' || entry.reason || entry.action === 'delete',
-    )
-  }, [filteredAuditLogs])
-
-  const discrepancyOverview = useMemo(() => {
-    const photocopyGapTotal = selectedDateSessions.reduce(
-      (sum, session) => sum + Math.abs(Number(session.revenueGap || 0)),
-      0,
-    )
-    const discrepancySessions = selectedDateSessions.filter((session) => session.hasDiscrepancy).length
-    const paymentEdits = selectedDateAuditLogs.filter(
-      (entry) => entry.modelName === 'PaymentRecord' && entry.action === 'update',
-    ).length
-
-    return {
-      photocopyGapTotal,
-      discrepancySessions,
-      paymentEdits,
+  // Things the owner should look at, each with a way to act on it.
+  const checks = useMemo(() => {
+    const items = []
+    for (const job of doneButOwing) {
+      items.push({
+        key: `owing-${job.id}`,
+        text: `Job #${job.id} (${job.customerName || 'Walk-in'}) is done but still owes ${formatCurrency(job.balanceDue)}.`,
+        jobId: job.id,
+      })
     }
-  }, [selectedDateAuditLogs, selectedDateSessions])
-
-  const staffSummary = useMemo(() => {
-    const summaryMap = new Map()
-
-    function getBucket(name) {
-      const key = name || 'Unknown staff'
-      if (!summaryMap.has(key)) {
-        summaryMap.set(key, {
-          name: key,
-          paymentsCount: 0,
-          paymentsTotal: 0,
-          sessionCount: 0,
-          discrepancyCount: 0,
-          auditCount: 0,
-          flaggedEdits: 0,
-        })
-      }
-      return summaryMap.get(key)
+    for (const entry of activity) {
+      const who = entry.performedByDisplay
+      const isDiscount = entry.modelName === 'Job' && entry.action === 'discount'
+      const isPaymentChange = entry.modelName === 'PaymentRecord' && (entry.action === 'update' || entry.action === 'delete')
+      if (!isDiscount && !isPaymentChange) continue
+      items.push({
+        key: `activity-${entry.id}`,
+        text: `${who} ${describeActivity(entry)}.`,
+        detail: entry.reason ? `Reason: ${entry.reason}` : isDiscount ? 'No reason given.' : '',
+        jobId: activityJobId(entry),
+        time: formatTime(entry.createdAt),
+      })
     }
+    for (const session of sessions) {
+      const gap = Number(session.revenueGap || 0)
+      if (!gap) continue
+      items.push({
+        key: `copies-${session.id}`,
+        text: `${session.staffName || 'A staff member'}'s photocopy cash was ${formatCurrency(Math.abs(gap))} ${gap < 0 ? 'short' : 'over'}.`,
+        detail: `${session.totalCopies} copies: expected ${formatCurrency(session.expectedRevenue)}, collected ${formatCurrency(session.actualCashCollected)}.`,
+        time: formatTime(session.createdAt),
+      })
+    }
+    for (const job of overdueJobs) {
+      items.push({
+        key: `overdue-${job.id}`,
+        text: `Job #${job.id} (${job.customerName || 'Walk-in'}) is overdue${job.deadline ? `, it was due ${formatDay(job.deadline)}` : ''}.`,
+        jobId: job.id,
+      })
+    }
+    return items
+  }, [activity, doneButOwing, overdueJobs, sessions])
 
-    selectedDatePayments.forEach((payment) => {
-      const bucket = getBucket(payment.recordedByName)
-      bucket.paymentsCount += 1
-      bucket.paymentsTotal += Number(payment.amount || 0)
-    })
+  const people = useMemo(() => {
+    const map = new Map()
+    for (const entry of activity) {
+      const name = entry.performedByDisplay
+      if (!map.has(name)) map.set(name, { name, jobs: 0, updates: 0, payments: 0, paymentTotal: 0, copies: 0, discounts: 0, other: 0 })
+      const person = map.get(name)
+      const key = `${entry.modelName}:${entry.action}`
+      if (key === 'Job:create') person.jobs += 1
+      else if (key === 'Job:update') person.updates += 1
+      else if (key === 'PaymentRecord:create') {
+        person.payments += 1
+        person.paymentTotal += Number(entry.metadata?.amount || 0)
+      } else if (key === 'PhotocopySession:create') person.copies += 1
+      else if (key === 'Job:discount') person.discounts += 1
+      else person.other += 1
+    }
+    return [...map.values()].sort((a, b) => b.paymentTotal - a.paymentTotal || a.name.localeCompare(b.name))
+  }, [activity])
 
-    selectedDateSessions.forEach((session) => {
-      const bucket = getBucket(session.staffName)
-      bucket.sessionCount += 1
-      if (session.hasDiscrepancy) {
-        bucket.discrepancyCount += 1
-      }
-    })
+  const sentences = useMemo(
+    () =>
+      activity.map((entry) => ({
+        id: entry.id,
+        who: entry.performedByDisplay,
+        text: describeActivity(entry),
+        reason: entry.reason,
+        time: formatTime(entry.createdAt),
+        jobId: activityJobId(entry),
+      })),
+    [activity],
+  )
 
-    selectedDateAuditLogs.forEach((entry) => {
-      const bucket = getBucket(entry.performedByName)
-      bucket.auditCount += 1
-      if (entry.modelName === 'PaymentRecord' && entry.action === 'update') {
-        bucket.flaggedEdits += 1
-      }
-    })
-
-    const values = Array.from(summaryMap.values())
-    values.sort((left, right) => {
-      const scoreRight =
-        right.paymentsTotal + right.auditCount * 50 + right.sessionCount * 25 + right.flaggedEdits * 10
-      const scoreLeft =
-        left.paymentsTotal + left.auditCount * 50 + left.sessionCount * 25 + left.flaggedEdits * 10
-      return scoreRight - scoreLeft
-    })
-    return values
-  }, [selectedDateAuditLogs, selectedDatePayments, selectedDateSessions])
+  const filteredSentences = useMemo(() => {
+    const query = search.trim().toLowerCase()
+    return sentences.filter(
+      (row) =>
+        (personFilter === 'all' || row.who === personFilter) &&
+        (!query || `${row.who} ${row.text} ${row.reason || ''}`.toLowerCase().includes(query)),
+    )
+  }, [personFilter, search, sentences])
 
   return (
     <>
       <TeamNavbar />
-      <main className="bg-[#F4F8FC]">
-        <section className="relative overflow-hidden bg-gradient-to-br from-[#102848] via-[#17365d] to-[#214672] py-10 text-white">
-          <div className="pointer-events-none absolute -left-8 top-6 h-28 w-28 bg-yellow/20 blur-3xl" />
-          <div className="pointer-events-none absolute right-8 top-10 h-24 w-24 bg-white/10 blur-3xl" />
-          <div className="container-shell relative">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-yellow">
-              Owner Report
-            </p>
-            <div className="mt-3 flex flex-wrap items-end justify-between gap-4">
-              <div className="max-w-3xl">
-                <h1 className="text-3xl font-extrabold text-white sm:text-4xl">
-                  Check shop money, staff work, and problem areas in one place.
-                </h1>
-                <p className="mt-4 text-sm leading-6 text-slate-100 sm:text-base">
-                  Check daily totals, staff activity, changes, and photocopy gaps from one screen.
-                </p>
-              </div>
+      <main className="min-h-screen bg-[#F4F8FC] pb-12">
+        <TeamPageHeader title="Reports" subtitle="Money, staff activity, and anything that needs checking.">
+          <label className="block text-sm font-semibold text-slate-700">
+            Day
+            <input
+              type="date"
+              value={reportDate}
+              onChange={(e) => setReportDate(e.target.value)}
+              className="mt-1 block min-h-[44px] w-full border border-slate-300 bg-white px-3 text-[15px] outline-none transition focus:border-navy sm:w-auto"
+            />
+          </label>
+        </TeamPageHeader>
 
-              <label className="block w-full text-sm font-semibold text-slate-100 sm:w-auto">
-                Date
+        <section className="container-shell py-6">
+          {statusMessage ? (
+            <div className="mb-5 border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{statusMessage}</div>
+          ) : null}
+
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <SummaryStat label="Collected" value={formatCurrency(dailySummary?.total_revenue ?? 0)} />
+            <SummaryStat
+              label="Still owed on this day's jobs"
+              value={formatCurrency(dailySummary?.outstanding_balances ?? 0)}
+              alert={Number(dailySummary?.outstanding_balances ?? 0) > 0}
+            />
+            <SummaryStat label="Done but not fully paid" value={doneButOwing.length} alert={doneButOwing.length > 0} />
+            <SummaryStat label="Photocopy cash short" value={formatCurrency(photocopyShort)} alert={photocopyShort > 0} />
+          </div>
+
+          <div className="mt-5 grid gap-5 lg:grid-cols-[1.1fr_0.9fr] lg:items-start">
+            <section className="border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+              <h2 className="text-xl font-extrabold text-navy">Needs checking</h2>
+              {loading ? (
+                <p className="mt-3 text-sm text-slate-500">Loading...</p>
+              ) : checks.length ? (
+                <ul className="mt-3 divide-y divide-slate-200">
+                  {checks.map((item) => (
+                    <li key={item.key} className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0">
+                        <p className="text-[15px] font-semibold text-slate-900">{item.text}</p>
+                        {item.detail || item.time ? (
+                          <p className="mt-0.5 text-sm text-slate-600">
+                            {[item.detail, item.time].filter(Boolean).join(' · ')}
+                          </p>
+                        ) : null}
+                      </div>
+                      {item.jobId ? (
+                        <button
+                          type="button"
+                          onClick={() => openJob(item.jobId)}
+                          className="min-h-[44px] shrink-0 border border-slate-300 bg-white px-3 text-sm font-semibold text-navy transition hover:border-navy"
+                        >
+                          Open job #{item.jobId}
+                        </button>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-3 border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                  Nothing needs checking for this day.
+                </p>
+              )}
+            </section>
+
+            <section className="border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+              <h2 className="text-xl font-extrabold text-navy">Staff</h2>
+              {people.length ? (
+                <ul className="mt-3 divide-y divide-slate-200">
+                  {people.map((person) => (
+                    <li key={person.name} className="py-3">
+                      <div className="flex items-baseline justify-between gap-3">
+                        <p className="font-bold text-slate-900">{person.name}</p>
+                        <p className="text-sm font-semibold text-slate-700">{formatCurrency(person.paymentTotal)} taken</p>
+                      </div>
+                      <p className="mt-0.5 text-sm text-slate-600">
+                        {[
+                          person.jobs ? `${person.jobs} job${person.jobs === 1 ? '' : 's'} added` : '',
+                          person.updates ? `${person.updates} job${person.updates === 1 ? '' : 's'} updated` : '',
+                          person.payments ? `${person.payments} payment${person.payments === 1 ? '' : 's'}` : '',
+                          person.copies ? `${person.copies} photocopy session${person.copies === 1 ? '' : 's'}` : '',
+                          person.discounts ? `${person.discounts} discount${person.discounts === 1 ? '' : 's'} given` : '',
+                          person.other ? `${person.other} other change${person.other === 1 ? '' : 's'}` : '',
+                        ]
+                          .filter(Boolean)
+                          .join(' · ') || 'No activity'}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-3 text-sm text-slate-500">{loading ? 'Loading...' : 'Nobody did anything in the CMS on this day.'}</p>
+              )}
+            </section>
+          </div>
+
+          <section className="mt-5 border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+            <h2 className="text-xl font-extrabold text-navy">Everything that happened</h2>
+            <div className="mt-3 grid gap-3 sm:grid-cols-[14rem_1fr]">
+              <label className="block text-sm font-semibold text-slate-700">
+                Person
+                <select
+                  value={personFilter}
+                  onChange={(e) => {
+                    setPersonFilter(e.target.value)
+                    setVisibleCount(ACTIVITY_PAGE_SIZE)
+                  }}
+                  className="mt-1 min-h-[44px] w-full border border-slate-300 bg-white px-3 text-[15px] outline-none transition focus:border-navy"
+                >
+                  <option value="all">Everyone</option>
+                  {people.map((person) => (
+                    <option key={person.name} value={person.name}>
+                      {person.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block text-sm font-semibold text-slate-700">
+                Search
                 <input
-                  type="date"
-                  value={reportDate}
-                  onChange={(e) => setReportDate(e.target.value)}
-                  className="mt-2 w-full border border-white/25 bg-white/10 px-3 py-2 text-sm text-white outline-none transition placeholder:text-slate-200 focus:border-yellow sm:w-auto"
+                  value={search}
+                  onChange={(e) => {
+                    setSearch(e.target.value)
+                    setVisibleCount(ACTIVITY_PAGE_SIZE)
+                  }}
+                  className="mt-1 min-h-[44px] w-full border border-slate-300 bg-white px-3 text-[15px] outline-none transition focus:border-navy"
+                  placeholder="e.g. a customer name, job number or discount"
                 />
               </label>
             </div>
-          </div>
-        </section>
 
-        <section className="container-shell py-8 md:py-10">
-          {statusMessage ? (
-            <div className="mb-6 border border-navy/20 bg-navy/5 px-4 py-3 text-sm text-slate-700 shadow-sm">
-              {statusMessage}
-            </div>
-          ) : null}
-
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <StatCard label="Money Made" value={formatCurrency(dailySummary?.total_revenue ?? 0)} />
-            <StatCard
-              label="Balance Left"
-              value={formatCurrency(dailySummary?.outstanding_balances ?? 0)}
-              tone={Number(dailySummary?.outstanding_balances ?? 0) > 0 ? 'alert' : 'normal'}
-            />
-            <StatCard
-              label="Done Not Paid"
-              value={completedUnpaidJobs.length}
-              tone={completedUnpaidJobs.length > 0 ? 'alert' : 'normal'}
-            />
-            <StatCard
-              label="Photocopy Gap"
-              value={formatCurrency(discrepancyOverview.photocopyGapTotal)}
-              tone={discrepancyOverview.photocopyGapTotal > 0 ? 'alert' : 'accent'}
-            />
-          </div>
-
-          <div className="mt-8 grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-            <section className="space-y-6">
-              <div className="border border-slate-200 bg-white p-5 shadow-sm md:p-6">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                      Quick Check
-                    </p>
-                    <h2 className="mt-1 text-2xl font-extrabold text-navy">Needs Attention</h2>
-                  </div>
-                  {loading ? <span className="text-sm text-slate-500">Loading...</span> : null}
-                </div>
-
-                <div className="mt-5 grid gap-3">
-                  <AlertRow
-                    label="Completed jobs with missing full payment"
-                    value={completedUnpaidJobs.length}
-                    danger={completedUnpaidJobs.length > 0}
-                    actionLabel={completedUnpaidJobs.length > 0 ? 'View jobs' : ''}
-                    onAction={completedUnpaidJobs.length > 0 ? handleViewUnpaidCompletedJobs : null}
-                  />
-                  <AlertRow
-                    label="Photocopy sessions with discrepancies"
-                    value={discrepancyOverview.discrepancySessions}
-                    danger={discrepancyOverview.discrepancySessions > 0}
-                  />
-                  <AlertRow
-                    label="Payment edits recorded in audit log"
-                    value={discrepancyOverview.paymentEdits}
-                    danger={discrepancyOverview.paymentEdits > 0}
-                  />
-                  <AlertRow
-                    label="Active overdue jobs in queue"
-                    value={overdueActiveJobs.length}
-                    danger={overdueActiveJobs.length > 0}
-                  />
-                </div>
-              </div>
-
-              <div className="border border-slate-200 bg-white p-5 shadow-sm md:p-6">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                      Staff Work
-                    </p>
-                    <h2 className="mt-1 text-2xl font-extrabold text-navy">Staff Summary</h2>
-                  </div>
-                  <span className="border border-slate-200 bg-slate-50 px-3 py-1 text-sm font-semibold text-slate-600">
-                    {staffSummary.length} active
-                  </span>
-                </div>
-
-                <div className="mt-5 grid gap-4">
-                  {staffSummary.length ? (
-                    staffSummary.map((person) => (
-                      <article key={person.name} className="border border-slate-200 bg-slate-50 px-4 py-4">
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                          <div>
-                            <h3 className="text-lg font-extrabold text-slate-900">{person.name}</h3>
-                            <p className="mt-1 text-sm text-slate-500">
-                              Audit actions {person.auditCount} | Payment edits {person.flaggedEdits}
-                            </p>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-base font-extrabold text-navy">
-                              {formatCurrency(person.paymentsTotal)}
-                            </p>
-                            <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
-                              Payments logged
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                          <MiniValueCard label="Payments" value={person.paymentsCount} />
-                          <MiniValueCard label="Sessions" value={person.sessionCount} />
-                          <MiniValueCard
-                            label="Discrepancies"
-                            value={person.discrepancyCount}
-                            tone={person.discrepancyCount > 0 ? 'alert' : 'normal'}
-                          />
-                          <MiniValueCard
-                            label="Flagged Edits"
-                            value={person.flaggedEdits}
-                            tone={person.flaggedEdits > 0 ? 'alert' : 'normal'}
-                          />
-                        </div>
-                      </article>
-                    ))
-                  ) : (
-                    <div className="border border-dashed border-slate-300 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">
-                      No staff activity has been logged for this date yet.
+            {filteredSentences.length ? (
+              <ul className="mt-3 divide-y divide-slate-200">
+                {filteredSentences.slice(0, visibleCount).map((row) => (
+                  <li key={row.id} className="flex items-start justify-between gap-3 py-3">
+                    <div className="min-w-0">
+                      <p className="text-[15px] text-slate-800">
+                        <span className="font-semibold text-slate-900">{row.who}</span> {row.text}
+                      </p>
+                      {row.reason ? <p className="mt-0.5 text-sm text-slate-600">Reason: {row.reason}</p> : null}
                     </div>
-                  )}
-                </div>
-              </div>
-            </section>
-
-            <section className="space-y-6">
-              <div className="border border-slate-200 bg-white p-5 shadow-sm md:p-6">
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                    Problem Changes
-                  </p>
-                  <h2 className="mt-1 text-2xl font-extrabold text-navy">Changes and Issues</h2>
-                </div>
-
-                <div className="mt-5 space-y-3">
-                  {flaggedAuditLogs.length ? (
-                    flaggedAuditLogs.slice(0, 8).map((entry) => (
-                      <article key={entry.id} className="border border-red-200 bg-red-50/70 px-4 py-4">
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                          <div>
-                            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-red-700">
-                              {titleCase(entry.action)} {titleCase(entry.modelName)}
-                            </p>
-                            <h3 className="mt-1 text-base font-extrabold text-slate-900">
-                              {entry.performedByName || 'Unknown staff'}
-                            </h3>
-                            <p className="mt-1 text-sm text-slate-500">
-                              Record #{entry.objectId || 'N/A'} | {formatDateTime(entry.createdAt)}
-                            </p>
-                          </div>
-                          <span className="border border-red-300 bg-white px-2 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-red-700">
-                            Review
-                          </span>
-                        </div>
-                        {entry.reason ? (
-                          <p className="mt-3 text-sm leading-6 text-slate-700">Reason: {entry.reason}</p>
-                        ) : (
-                          <p className="mt-3 text-sm leading-6 text-slate-700">
-                            This action touches cash or a record that usually needs owner review.
-                          </p>
-                        )}
-                      </article>
-                    ))
-                  ) : (
-                    <div className="border border-dashed border-slate-300 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">
-                      No high-risk edits or anomalies for this date.
+                    <div className="flex shrink-0 flex-col items-end gap-1">
+                      <span className="text-sm text-slate-500">{row.time}</span>
+                      {row.jobId ? (
+                        <button
+                          type="button"
+                          onClick={() => openJob(row.jobId)}
+                          className="min-h-[36px] text-sm font-semibold text-navy underline underline-offset-2"
+                        >
+                          Open job
+                        </button>
+                      ) : null}
                     </div>
-                  )}
-                </div>
-              </div>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-3 text-sm text-slate-500">{loading ? 'Loading...' : 'Nothing matches.'}</p>
+            )}
 
-              <div className="border border-slate-200 bg-white p-5 shadow-sm md:p-6">
-                <div className="flex flex-wrap items-end justify-between gap-3">
-                  <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                      Activity Log
-                    </p>
-                    <h2 className="mt-1 text-2xl font-extrabold text-navy">Search Log</h2>
-                  </div>
-
-                  <div className="grid w-full gap-3 sm:grid-cols-2">
-                    <label className="block text-sm font-semibold text-slate-700">
-                      Staff
-                      <select
-                        value={staffFilter}
-                        onChange={(e) => setStaffFilter(e.target.value)}
-                        className="mt-2 w-full border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-navy"
-                      >
-                        <option value="all">All staff</option>
-                        {staffOptions.map((name) => (
-                          <option key={name} value={name}>
-                            {name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-
-                    <label className="block text-sm font-semibold text-slate-700">
-                      Search
-                      <input
-                        value={auditSearch}
-                        onChange={(e) => setAuditSearch(e.target.value)}
-                        className="mt-2 w-full border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-navy"
-                        placeholder="PaymentRecord, update, username..."
-                      />
-                    </label>
-                  </div>
-                </div>
-
-                <div className="mt-5 space-y-3">
-                  {filteredAuditLogs.length ? (
-                    filteredAuditLogs.map((entry) => (
-                      <article key={entry.id} className="border border-slate-200 bg-slate-50 px-4 py-4">
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                          <div>
-                            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                              {titleCase(entry.modelName)} | {titleCase(entry.action)}
-                            </p>
-                            <h3 className="mt-1 text-base font-extrabold text-slate-900">
-                              {entry.performedByName || 'Unknown staff'}
-                            </h3>
-                            <p className="mt-1 text-sm text-slate-500">
-                              Record #{entry.objectId || 'N/A'} | {formatDateTime(entry.createdAt)}
-                            </p>
-                          </div>
-                          <span className="border border-slate-200 bg-white px-2 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-600">
-                            {titleCase(entry.action)}
-                          </span>
-                        </div>
-
-                        {entry.reason ? (
-                          <p className="mt-3 text-sm leading-6 text-slate-700">Reason: {entry.reason}</p>
-                        ) : null}
-                      </article>
-                    ))
-                  ) : (
-                    <div className="border border-dashed border-slate-300 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">
-                      No audit records match this filter yet.
-                    </div>
-                  )}
-                </div>
-              </div>
-            </section>
-          </div>
+            {filteredSentences.length > visibleCount ? (
+              <button
+                type="button"
+                onClick={() => setVisibleCount((count) => count + ACTIVITY_PAGE_SIZE)}
+                className="mt-3 min-h-[44px] w-full border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:border-navy hover:text-navy"
+              >
+                Show more ({filteredSentences.length - visibleCount} left)
+              </button>
+            ) : null}
+          </section>
         </section>
       </main>
-      <Footer />
     </>
   )
 }
 
-function StatCard({ label, value, tone = 'normal' }) {
-  const toneClass =
-    tone === 'alert'
-      ? 'border-red-200 bg-red-50'
-      : tone === 'accent'
-        ? 'border-yellow/40 bg-yellow/20'
-        : 'border-slate-200 bg-white'
-
+function SummaryStat({ label, value, alert = false }) {
   return (
-    <div className={`${toneClass} border px-4 py-4 shadow-sm`}>
-      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">{label}</p>
-      <p className="mt-2 text-2xl font-extrabold text-slate-900">{value}</p>
-    </div>
-  )
-}
-
-function MiniValueCard({ label, value, tone = 'normal' }) {
-  const toneClass = tone === 'alert' ? 'border-red-200 bg-red-50' : 'border-slate-200 bg-white'
-
-  return (
-    <div className={`${toneClass} border px-3 py-3`}>
-      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">{label}</p>
-      <p className="mt-2 text-lg font-extrabold text-slate-900">{value}</p>
-    </div>
-  )
-}
-
-function AlertRow({ label, value, danger, actionLabel = '', onAction = null }) {
-  return (
-    <div
-      className={`flex flex-col gap-2 border px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between ${
-        danger
-          ? 'border-red-300 bg-red-50 text-red-700'
-          : 'border-emerald-200 bg-emerald-50 text-emerald-700'
-      }`}
-    >
-      <span className="font-semibold">{label}</span>
-      <div className="flex items-center gap-3">
-        <span className="text-base font-extrabold">{value}</span>
-        {actionLabel && onAction ? (
-          <button
-            type="button"
-            onClick={onAction}
-            className="border border-current px-2 py-1 text-xs font-bold uppercase tracking-[0.12em] transition hover:bg-white/50"
-          >
-            {actionLabel}
-          </button>
-        ) : null}
-      </div>
+    <div className={`border px-4 py-3 ${alert ? 'border-red-200 bg-red-50' : 'border-slate-200 bg-white'}`}>
+      <p className="text-sm text-slate-600">{label}</p>
+      <p className={`mt-1 text-xl font-extrabold ${alert ? 'text-red-700' : 'text-slate-900'}`}>{value}</p>
     </div>
   )
 }

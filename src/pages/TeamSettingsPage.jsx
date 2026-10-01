@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ChevronDown } from 'lucide-react'
-import Footer from '../components/Footer'
+import TeamPageHeader from '../components/TeamPageHeader'
 import TeamNavbar from '../components/TeamNavbar'
 import { useAuth } from '../context/authContext'
 import {
@@ -35,7 +35,7 @@ function formatDateTime(value) {
 }
 
 function TeamSettingsPage() {
-  const { user } = useAuth()
+  const { user, refreshUser } = useAuth()
   const [setting, setSetting] = useState(null)
   const [accounts, setAccounts] = useState([])
   const [invitations, setInvitations] = useState([])
@@ -48,6 +48,7 @@ function TeamSettingsPage() {
   const [createForm, setCreateForm] = useState(defaultCreateForm)
   const [latestInvitation, setLatestInvitation] = useState(null)
   const [passwordDrafts, setPasswordDrafts] = useState({})
+  const [nameDrafts, setNameDrafts] = useState({})
   const [loading, setLoading] = useState(true)
   const [savingSettings, setSavingSettings] = useState(false)
   const [creatingAccount, setCreatingAccount] = useState(false)
@@ -171,6 +172,33 @@ function TeamSettingsPage() {
     }
   }
 
+  async function handleSaveName(account) {
+    const draft = nameDrafts[account.id] || {}
+    const firstName = String(draft.firstName ?? account.first_name ?? '').trim()
+    const lastName = String(draft.lastName ?? account.last_name ?? '').trim()
+    if (!firstName) {
+      setStatusMessage('Enter a first name.')
+      return
+    }
+
+    setUpdatingAccountId(account.id)
+    try {
+      await updateStaffAccount(account.id, { first_name: firstName, last_name: lastName })
+      setNameDrafts((current) => {
+        const next = { ...current }
+        delete next[account.id]
+        return next
+      })
+      await loadSettingsPage()
+      if (user?.id === account.id) await refreshUser()
+      setStatusMessage(`Name saved: ${`${firstName} ${lastName}`.trim()}.`)
+    } catch (error) {
+      setStatusMessage(`Could not save the name: ${error.message}`)
+    } finally {
+      setUpdatingAccountId(null)
+    }
+  }
+
   async function handleRoleChange(account, role) {
     setUpdatingAccountId(account.id)
     try {
@@ -238,21 +266,7 @@ function TeamSettingsPage() {
     <>
       <TeamNavbar />
       <main className="bg-[#F4F8FC]">
-        <section className="relative overflow-hidden bg-gradient-to-br from-[#102848] via-[#17365d] to-[#214672] py-10 text-white">
-          <div className="pointer-events-none absolute -left-8 top-6 h-28 w-28 bg-yellow/20 blur-3xl" />
-          <div className="pointer-events-none absolute right-8 top-10 h-24 w-24 bg-white/10 blur-3xl" />
-          <div className="container-shell relative">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-yellow">
-              Settings
-            </p>
-            <h1 className="mt-3 text-3xl font-extrabold text-white sm:text-4xl">
-              Manage staff and shop settings.
-            </h1>
-            <p className="mt-4 max-w-3xl text-sm leading-6 text-slate-100 sm:text-base">
-              Use this page to add staff, reset passwords, and update shop details.
-            </p>
-          </div>
-        </section>
+        <TeamPageHeader title="Settings" subtitle="Shop details, job types and staff accounts." />
 
         <section className="container-shell py-8 md:py-10">
           {statusMessage ? (
@@ -266,7 +280,7 @@ function TeamSettingsPage() {
               <div className="border border-slate-200 bg-white p-5 shadow-sm md:p-6">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
                       Shop Settings
                     </p>
                     <h2 className="mt-1 text-2xl font-extrabold text-navy">Shop Info</h2>
@@ -342,7 +356,7 @@ function TeamSettingsPage() {
 
               <div className="border border-slate-200 bg-white p-5 shadow-sm md:p-6">
                 <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
                     New Staff
                   </p>
                   <h2 className="mt-1 text-2xl font-extrabold text-navy">Invite Staff</h2>
@@ -436,7 +450,7 @@ function TeamSettingsPage() {
                 <div className="mt-6 border-t border-slate-200 pt-5">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
                         Waiting Invites
                       </p>
                       <h3 className="mt-1 text-lg font-extrabold text-slate-900">
@@ -512,7 +526,7 @@ function TeamSettingsPage() {
             <section className="border border-slate-200 bg-white p-5 shadow-sm md:p-6">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
                     Staff
                   </p>
                   <h2 className="mt-1 text-2xl font-extrabold text-navy">Staff Accounts</h2>
@@ -548,7 +562,7 @@ function TeamSettingsPage() {
                           <div className="flex items-start gap-3">
                             <div className="flex flex-wrap justify-end gap-2">
                               <span
-                                className={`border px-2 py-1 text-[11px] font-bold uppercase tracking-[0.12em] ${
+                                className={`border px-2 py-1 text-xs font-bold uppercase tracking-[0.12em] ${
                                   account.is_active
                                     ? 'border-emerald-300 bg-emerald-100 text-emerald-700'
                                     : 'border-slate-300 bg-slate-200 text-slate-600'
@@ -558,7 +572,7 @@ function TeamSettingsPage() {
                               </span>
 
                               {isSelf ? (
-                                <span className="border border-yellow/40 bg-yellow/20 px-2 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-navy">
+                                <span className="border border-yellow/40 bg-yellow/20 px-2 py-1 text-xs font-bold uppercase tracking-[0.12em] text-navy">
                                   Your account
                                 </span>
                               ) : null}
@@ -577,6 +591,48 @@ function TeamSettingsPage() {
 
                         {isExpanded ? (
                           <div className="mt-4 grid gap-4 border-t border-slate-200 pt-4 xl:grid-cols-[180px_minmax(0,1fr)]">
+                            <div className="xl:col-span-2">
+                              <p className="text-sm font-semibold text-slate-700">Name shown in the CMS</p>
+                              <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+                                <label className="block text-sm text-slate-600">
+                                  First name
+                                  <input
+                                    value={nameDrafts[account.id]?.firstName ?? account.first_name ?? ''}
+                                    onChange={(e) =>
+                                      setNameDrafts((current) => ({
+                                        ...current,
+                                        [account.id]: { ...current[account.id], firstName: e.target.value },
+                                      }))
+                                    }
+                                    className="mt-1 min-h-[44px] w-full border border-slate-300 bg-white px-3 text-[15px] outline-none transition focus:border-navy"
+                                    placeholder="e.g. Tolu"
+                                  />
+                                </label>
+                                <label className="block text-sm text-slate-600">
+                                  Last name
+                                  <input
+                                    value={nameDrafts[account.id]?.lastName ?? account.last_name ?? ''}
+                                    onChange={(e) =>
+                                      setNameDrafts((current) => ({
+                                        ...current,
+                                        [account.id]: { ...current[account.id], lastName: e.target.value },
+                                      }))
+                                    }
+                                    className="mt-1 min-h-[44px] w-full border border-slate-300 bg-white px-3 text-[15px] outline-none transition focus:border-navy"
+                                    placeholder="e.g. Adebayo"
+                                  />
+                                </label>
+                                <button
+                                  type="button"
+                                  onClick={() => handleSaveName(account)}
+                                  disabled={updatingAccountId === account.id}
+                                  className="min-h-[44px] border border-navy px-4 text-sm font-semibold text-navy transition hover:bg-navy hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  Save name
+                                </button>
+                              </div>
+                            </div>
+
                             <label className="block text-sm font-semibold text-slate-700">
                               Role
                               <select
@@ -645,7 +701,6 @@ function TeamSettingsPage() {
           </div>
         </section>
       </main>
-      <Footer />
     </>
   )
 }

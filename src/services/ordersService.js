@@ -32,6 +32,16 @@ function normalizeOrder(item) {
     amountDue: Number(item?.amount_due ?? item?.total_amount ?? item?.total ?? 0),
     balanceDue: Number(item?.balance_due || 0),
     deadline: item?.deadline || null,
+    fulfilment: item?.fulfilment || 'pickup',
+    items: Array.isArray(item?.items)
+      ? item.items.map((line) => ({
+          id: line.id,
+          description: line.description || '',
+          quantity: Number(line.quantity || 1),
+          rate: Number(line.rate || 0),
+          amount: Number(line.amount || 0),
+        }))
+      : [],
     hasBeenMessaged: Boolean(item?.has_been_messaged),
     isOverdue: Boolean(item?.is_overdue),
   }
@@ -102,10 +112,13 @@ export async function createJob(payload) {
 
 export async function ensureWalkInCustomer() {
   const customers = await fetchAllPages(`${DJANGO_API_BASE}/customers/`)
+  // One shared record for anonymous walk-ins. Older desk versions created "Walk-in Customer"
+  // records, so reuse those too instead of adding another.
   const existing = customers.find(
     (customer) =>
       customer?.customer_type === 'walk_in' &&
-      String(customer?.full_name || '').trim().toLowerCase() === 'walk-in',
+      ['walk-in', 'walk-in customer'].includes(String(customer?.full_name || '').trim().toLowerCase()) &&
+      !String(customer?.phone || '').trim(),
   )
 
   if (existing?.id) {

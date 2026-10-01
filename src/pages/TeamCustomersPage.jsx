@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ChevronDown } from 'lucide-react'
-import Footer from '../components/Footer'
+import TeamPageHeader from '../components/TeamPageHeader'
 import TeamNavbar from '../components/TeamNavbar'
 import { createCustomer, getCustomersData } from '../services/customersService'
 
@@ -131,21 +131,7 @@ function TeamCustomersPage() {
     <>
       <TeamNavbar />
       <main className="bg-[#F4F8FC]">
-        <section className="relative overflow-hidden bg-gradient-to-br from-[#102848] via-[#17365d] to-[#214672] py-10 text-white">
-          <div className="pointer-events-none absolute -left-8 top-6 h-28 w-28 bg-yellow/20 blur-3xl" />
-          <div className="pointer-events-none absolute right-8 top-10 h-24 w-24 bg-white/10 blur-3xl" />
-          <div className="container-shell relative">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-yellow">
-              Customers
-            </p>
-            <h1 className="mt-3 text-3xl font-extrabold text-white sm:text-4xl">
-              Add, find, and follow up with customers.
-            </h1>
-            <p className="mt-4 max-w-3xl text-sm leading-6 text-slate-100 sm:text-base">
-              Search customers fast, see their last job, and mark people to follow up.
-            </p>
-          </div>
-        </section>
+        <TeamPageHeader title="Customers" subtitle="Find a customer, see their jobs, or add someone new." />
 
         <section className="container-shell py-8 md:py-10">
           {status ? (
@@ -157,7 +143,7 @@ function TeamCustomersPage() {
           <div className="grid gap-6 xl:grid-cols-[1fr_1fr]">
             <section className="border border-slate-200 bg-white p-5 shadow-sm md:p-6">
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
                   New Customer
                 </p>
                 <h2 className="mt-1 text-2xl font-extrabold text-navy">Add Customer</h2>
@@ -270,7 +256,7 @@ function TeamCustomersPage() {
 
             <section className="space-y-6">
               <div className="border border-slate-200 bg-white p-5 shadow-sm md:p-6">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
                   Customer Summary
                 </p>
                 <h2 className="mt-1 text-2xl font-extrabold text-navy">Overview</h2>
@@ -286,7 +272,7 @@ function TeamCustomersPage() {
               <div className="border border-slate-200 bg-white p-5 shadow-sm md:p-6">
                 <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
                       Recent Customers
                     </p>
                     <h2 className="mt-1 text-2xl font-extrabold text-navy">Customer List</h2>
@@ -314,7 +300,7 @@ function TeamCustomersPage() {
                               {customer.business_name || customer.phone || 'No business or phone added'}
                             </p>
                           </div>
-                          <span className="border border-slate-300 bg-white px-2 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">
+                          <span className="border border-slate-300 bg-white px-2 py-1 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
                             {titleCase(customer.customer_type)}
                           </span>
                         </div>
@@ -324,7 +310,7 @@ function TeamCustomersPage() {
                             Last job: {formatDate(customer.last_job_date)}
                           </span>
                           <span className="border border-slate-200 bg-white px-2 py-1">
-                            Orders: {customer.ordersCount}
+                            Jobs: {customer.ordersCount}
                           </span>
                           {customer.follow_up_flag ? (
                             <span className="border border-yellow/50 bg-yellow/10 px-2 py-1 text-yellow-800">
@@ -351,7 +337,7 @@ function TeamCustomersPage() {
               className="flex w-full flex-col items-start gap-3 text-left sm:flex-row sm:items-center sm:justify-between"
             >
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
                   All Customers
                 </p>
                 <h2 className="mt-1 text-2xl font-extrabold text-navy">Full Customer List</h2>
@@ -400,7 +386,7 @@ function TeamCustomersPage() {
                               {item.business_name || 'No business name added'}
                             </p>
                           </div>
-                          <span className="border border-slate-300 bg-slate-50 px-2 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">
+                          <span className="border border-slate-300 bg-slate-50 px-2 py-1 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
                             {titleCase(item.customer_type)}
                           </span>
                         </div>
@@ -463,7 +449,6 @@ function TeamCustomersPage() {
           </section>
         </section>
       </main>
-      <Footer />
     </>
   )
 }
@@ -471,7 +456,7 @@ function TeamCustomersPage() {
 function ValueCard({ label, value }) {
   return (
     <div className="border border-slate-200 bg-slate-50 px-4 py-3">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">{label}</p>
+      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">{label}</p>
       <p className="mt-2 text-2xl font-extrabold text-slate-900">{value}</p>
     </div>
   )
@@ -480,7 +465,7 @@ function ValueCard({ label, value }) {
 function InfoCell({ label, value }) {
   return (
     <div className="border border-slate-200 bg-slate-50 px-3 py-2">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">{label}</p>
+      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">{label}</p>
       <p className="mt-1 text-sm font-semibold text-slate-800">{value}</p>
     </div>
   )
