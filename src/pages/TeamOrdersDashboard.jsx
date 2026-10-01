@@ -5,6 +5,7 @@ import Footer from '../components/Footer'
 import TeamNavbar from '../components/TeamNavbar'
 import { useAuth } from '../context/authContext'
 import { createCustomer, getCustomersData } from '../services/customersService'
+import { createPaymentRecord } from '../services/operationsService'
 import {
   createJob,
   getDailySummary,
@@ -201,6 +202,8 @@ function TeamOrdersDashboard() {
   // Jobs from earlier days opened through a ?focusJobId= link (Records / Reports);
   // the queue itself only holds today's jobs.
   const [linkedJobIds, setLinkedJobIds] = useState([])
+  const [collectDrafts, setCollectDrafts] = useState({})
+  const [collectingOrderId, setCollectingOrderId] = useState(null)
   const [missingJobIds, setMissingJobIds] = useState([])
   const deferredCustomerSearch = useDeferredValue(customerSearch)
   const deferredQueueSearch = useDeferredValue(queueSearch)
@@ -508,6 +511,69 @@ function TeamOrdersDashboard() {
       setStatusMessage(`Could not update job details: ${error.message}`)
     } finally {
       setSavingOrderId(null)
+    }
+  }
+
+  function updateCollectDraft(orderId, key, value) {
+    setCollectDrafts((current) => ({
+      ...current,
+      [orderId]: { amount: '', agreedTotal: '', discountReason: '', ...current[orderId], [key]: value },
+    }))
+  }
+
+  function getCollectPreview(order) {
+    const draft = collectDrafts[order.id] || {}
+    const total = Number(order.totalAmount || 0)
+    const alreadyPaid = Number(order.amountPaid || 0)
+    const hasAgreed = draft.agreedTotal !== undefined && draft.agreedTotal !== ''
+    const agreed = hasAgreed ? Number(draft.agreedTotal) : Number(order.amountDue || total)
+    return {
+      total,
+      alreadyPaid,
+      hasAgreed,
+      discount: Math.max(0, total - agreed),
+      leftToPay: Math.max(0, agreed - alreadyPaid),
+      invalid: hasAgreed && (Number.isNaN(agreed) || agreed < alreadyPaid || agreed > total),
+    }
+  }
+
+  async function handleCollectPayment(order) {
+    const draft = collectDrafts[order.id] || {}
+    const amount = Number(draft.amount || 0)
+    const preview = getCollectPreview(order)
+
+    if (!amount || amount <= 0) {
+      setStatusMessage('Enter the amount received before recording the payment.')
+      return
+    }
+    if (preview.invalid) {
+      setStatusMessage(
+        `The discounted price must be between ${formatCurrency(preview.alreadyPaid)} (already paid) and ${formatCurrency(preview.total)} (job total).`,
+      )
+      return
+    }
+
+    setCollectingOrderId(order.id)
+    try {
+      await createPaymentRecord({
+        job: order.id,
+        source: 'job',
+        amount: String(amount),
+        note: 'Collected at the front desk.',
+        ...(preview.hasAgreed
+          ? { agreed_total: String(Number(draft.agreedTotal)), discount_reason: String(draft.discountReason || '').trim() }
+          : {}),
+      })
+      setCollectDrafts((current) => {
+        const next = { ...current }
+        delete next[order.id]
+        return next
+      })
+      await refreshAfterJobChange(`Payment of ${formatCurrency(amount)} recorded for job #${order.id}.`)
+    } catch (error) {
+      setStatusMessage(`Could not record payment: ${error.message}`)
+    } finally {
+      setCollectingOrderId(null)
     }
   }
 
@@ -1012,7 +1078,10 @@ function TeamOrdersDashboard() {
                     deadline: toDateTimeLocalValue(order.deadline),
                   }
                   const draftTotal = Math.max(1, Number(queueDraft.quantity || 1)) * Number(queueDraft.unitPrice || 0)
-                  const draftBalance = Math.max(0, draftTotal - Number(queueDraft.amountPaid || 0))
+                  const draftBalance = Math.max(
+                    0,
+                    draftTotal - Number(order.discountAmount || 0) - Number(queueDraft.amountPaid || 0),
+                  )
                   const isExpanded = expandedOrderId === order.id
                   const hasPaymentIssue = isCompletedWithPaymentIssue(order)
                   const isCompleted = isCompletedJob(order)
@@ -1186,6 +1255,99 @@ function TeamOrdersDashboard() {
                         </span>
                         <p className="mt-2 whitespace-pre-line leading-6">{order.projectScopeNote}</p>
                       </div>
+                    ) : null}
+
+                    {Number(order.balanceDue || 0) > 0 && order.status !== 'cancelled' ? (
+                      (() => {
+                        const collectDraft = collectDrafts[order.id] || {}
+                        const collectPreview = getCollectPreview(order)
+                        return (
+                          <div className="mt-4 border border-navy/20 bg-white px-4 py-4">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+                              Collect Payment
+                            </p>
+                            <h4 className="mt-1 text-base font-extrabold text-slate-900">
+                              Balance {formatCurrency(order.balanceDue)}
+                              {order.discountAmount > 0 ? (
+                                <span className="ml-2 text-sm font-semibold text-emerald-700">
+                                  (after {formatCurrency(order.discountAmount)} discount)
+                                </span>
+                              ) : null}
+                            </h4>
+
+                            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                              <label className="text-sm font-semibold text-slate-700">
+                                Amount received
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  value={collectDraft.amount || ''}
+                                  onChange={(e) => updateCollectDraft(order.id, 'amount', e.target.value)}
+                                  className="mt-2 w-full border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-navy"
+                                  placeholder="0.00"
+                                />
+                              </label>
+                              <label className="text-sm font-semibold text-slate-700">
+                                Discounted price (optional)
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  value={collectDraft.agreedTotal || ''}
+                                  onChange={(e) => updateCollectDraft(order.id, 'agreedTotal', e.target.value)}
+                                  className="mt-2 w-full border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-navy"
+                                  placeholder={`Agreed total, full price ${formatCurrency(collectPreview.total)}`}
+                                />
+                              </label>
+                              <label className="text-sm font-semibold text-slate-700">
+                                Discount reason
+                                <input
+                                  value={collectDraft.discountReason || ''}
+                                  onChange={(e) => updateCollectDraft(order.id, 'discountReason', e.target.value)}
+                                  disabled={!collectPreview.hasAgreed}
+                                  className="mt-2 w-full border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-navy disabled:cursor-not-allowed disabled:bg-slate-100"
+                                  placeholder="e.g. Bulk order, loyal customer"
+                                />
+                              </label>
+                            </div>
+
+                            {collectPreview.hasAgreed ? (
+                              collectPreview.invalid ? (
+                                <p className="mt-3 border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                                  The discounted price must be between {formatCurrency(collectPreview.alreadyPaid)} (already
+                                  paid) and {formatCurrency(collectPreview.total)} (job total).
+                                </p>
+                              ) : (
+                                <p className="mt-3 border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+                                  Discount <span className="font-bold">{formatCurrency(collectPreview.discount)}</span>. Customer
+                                  pays <span className="font-bold">{formatCurrency(collectPreview.leftToPay)}</span> to close this
+                                  job.
+                                </p>
+                              )
+                            ) : null}
+
+                            <div className="mt-4 flex flex-col items-stretch gap-2 sm:flex-row sm:justify-end">
+                              <button
+                                type="button"
+                                onClick={() => updateCollectDraft(order.id, 'amount', String(collectPreview.leftToPay))}
+                                disabled={collectPreview.invalid}
+                                className="border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-navy hover:text-navy disabled:opacity-50"
+                              >
+                                Use full balance {formatCurrency(collectPreview.leftToPay)}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleCollectPayment(order)}
+                                disabled={collectingOrderId === order.id}
+                                className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+                              >
+                                {collectingOrderId === order.id ? 'Recording...' : 'Record Payment'}
+                              </button>
+                            </div>
+                          </div>
+                        )
+                      })()
                     ) : null}
 
                     <div className="mt-4 border border-slate-200 bg-slate-50 px-4 py-4">
