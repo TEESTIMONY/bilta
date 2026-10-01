@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import Footer from '../components/Footer'
+import TeamPageHeader from '../components/TeamPageHeader'
 import TeamNavbar from '../components/TeamNavbar'
 import { getDailySummary, getOrdersData } from '../services/ordersService'
 import {
@@ -248,35 +248,17 @@ function TeamOwnerReportsPage() {
     <>
       <TeamNavbar />
       <main className="bg-[#F4F8FC]">
-        <section className="relative overflow-hidden bg-gradient-to-br from-[#102848] via-[#17365d] to-[#214672] py-10 text-white">
-          <div className="pointer-events-none absolute -left-8 top-6 h-28 w-28 bg-yellow/20 blur-3xl" />
-          <div className="pointer-events-none absolute right-8 top-10 h-24 w-24 bg-white/10 blur-3xl" />
-          <div className="container-shell relative">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-yellow">
-              Owner Report
-            </p>
-            <div className="mt-3 flex flex-wrap items-end justify-between gap-4">
-              <div className="max-w-3xl">
-                <h1 className="text-3xl font-extrabold text-white sm:text-4xl">
-                  Check shop money, staff work, and problem areas in one place.
-                </h1>
-                <p className="mt-4 text-sm leading-6 text-slate-100 sm:text-base">
-                  Check daily totals, staff activity, changes, and photocopy gaps from one screen.
-                </p>
-              </div>
-
-              <label className="block w-full text-sm font-semibold text-slate-100 sm:w-auto">
-                Date
-                <input
-                  type="date"
-                  value={reportDate}
-                  onChange={(e) => setReportDate(e.target.value)}
-                  className="mt-2 w-full border border-white/25 bg-white/10 px-3 py-2 text-sm text-white outline-none transition placeholder:text-slate-200 focus:border-yellow sm:w-auto"
-                />
-              </label>
-            </div>
-          </div>
-        </section>
+        <TeamPageHeader title="Reports" subtitle="Money, staff activity, and anything that needs checking.">
+            <label className="block text-sm font-semibold text-slate-700">
+              Day
+              <input
+                type="date"
+                value={reportDate}
+                onChange={(e) => setReportDate(e.target.value)}
+                className="mt-1 block min-h-[44px] w-full border border-slate-300 bg-white px-3 text-[15px] outline-none transition focus:border-navy sm:w-auto"
+              />
+            </label>
+        </TeamPageHeader>
 
         <section className="container-shell py-8 md:py-10">
           {statusMessage ? (
@@ -309,7 +291,7 @@ function TeamOwnerReportsPage() {
               <div className="border border-slate-200 bg-white p-5 shadow-sm md:p-6">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
                       Quick Check
                     </p>
                     <h2 className="mt-1 text-2xl font-extrabold text-navy">Needs Attention</h2>
@@ -346,7 +328,7 @@ function TeamOwnerReportsPage() {
               <div className="border border-slate-200 bg-white p-5 shadow-sm md:p-6">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
                       Staff Work
                     </p>
                     <h2 className="mt-1 text-2xl font-extrabold text-navy">Staff Summary</h2>
@@ -371,7 +353,7 @@ function TeamOwnerReportsPage() {
                             <p className="text-base font-extrabold text-navy">
                               {formatCurrency(person.paymentsTotal)}
                             </p>
-                            <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+                            <p className="mt-1 text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
                               Payments logged
                             </p>
                           </div>
@@ -405,7 +387,7 @@ function TeamOwnerReportsPage() {
             <section className="space-y-6">
               <div className="border border-slate-200 bg-white p-5 shadow-sm md:p-6">
                 <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
                     Problem Changes
                   </p>
                   <h2 className="mt-1 text-2xl font-extrabold text-navy">Changes and Issues</h2>
@@ -417,7 +399,7 @@ function TeamOwnerReportsPage() {
                       <article key={entry.id} className="border border-red-200 bg-red-50/70 px-4 py-4">
                         <div className="flex flex-wrap items-start justify-between gap-3">
                           <div>
-                            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-red-700">
+                            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-red-700">
                               {titleCase(entry.action)} {titleCase(entry.modelName)}
                             </p>
                             <h3 className="mt-1 text-base font-extrabold text-slate-900">
@@ -427,7 +409,7 @@ function TeamOwnerReportsPage() {
                               Record #{entry.objectId || 'N/A'} | {formatDateTime(entry.createdAt)}
                             </p>
                           </div>
-                          <span className="border border-red-300 bg-white px-2 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-red-700">
+                          <span className="border border-red-300 bg-white px-2 py-1 text-xs font-bold uppercase tracking-[0.12em] text-red-700">
                             Review
                           </span>
                         </div>
@@ -451,7 +433,7 @@ function TeamOwnerReportsPage() {
               <div className="border border-slate-200 bg-white p-5 shadow-sm md:p-6">
                 <div className="flex flex-wrap items-end justify-between gap-3">
                   <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
                       Activity Log
                     </p>
                     <h2 className="mt-1 text-2xl font-extrabold text-navy">Search Log</h2>
@@ -492,7 +474,7 @@ function TeamOwnerReportsPage() {
                       <article key={entry.id} className="border border-slate-200 bg-slate-50 px-4 py-4">
                         <div className="flex flex-wrap items-start justify-between gap-3">
                           <div>
-                            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
                               {titleCase(entry.modelName)} | {titleCase(entry.action)}
                             </p>
                             <h3 className="mt-1 text-base font-extrabold text-slate-900">
@@ -502,7 +484,7 @@ function TeamOwnerReportsPage() {
                               Record #{entry.objectId || 'N/A'} | {formatDateTime(entry.createdAt)}
                             </p>
                           </div>
-                          <span className="border border-slate-200 bg-white px-2 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-600">
+                          <span className="border border-slate-200 bg-white px-2 py-1 text-xs font-bold uppercase tracking-[0.12em] text-slate-600">
                             {titleCase(entry.action)}
                           </span>
                         </div>
@@ -523,7 +505,6 @@ function TeamOwnerReportsPage() {
           </div>
         </section>
       </main>
-      <Footer />
     </>
   )
 }
@@ -538,7 +519,7 @@ function StatCard({ label, value, tone = 'normal' }) {
 
   return (
     <div className={`${toneClass} border px-4 py-4 shadow-sm`}>
-      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">{label}</p>
+      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">{label}</p>
       <p className="mt-2 text-2xl font-extrabold text-slate-900">{value}</p>
     </div>
   )
@@ -549,7 +530,7 @@ function MiniValueCard({ label, value, tone = 'normal' }) {
 
   return (
     <div className={`${toneClass} border px-3 py-3`}>
-      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">{label}</p>
+      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">{label}</p>
       <p className="mt-2 text-lg font-extrabold text-slate-900">{value}</p>
     </div>
   )

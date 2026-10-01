@@ -56,8 +56,11 @@ function phoneKey(value) {
   return digits
 }
 
-function JobOrderForm({ customers = [], onCreated, onError }) {
+function JobOrderForm({ customers = [], jobTypes = [], onCreated, onError }) {
   const [form, setForm] = useState(defaultForm)
+  // Owner-defined job categories (Settings) when set, otherwise the built-in list.
+  const typeOptions = jobTypes.length ? jobTypes : projectJobTypes
+  const selectedJobType = typeOptions.includes(form.jobType) ? form.jobType : typeOptions[0]
   const [items, setItems] = useState([emptyItem()])
   const [submitting, setSubmitting] = useState(false)
   const isProject = form.kind === 'project'
@@ -132,7 +135,7 @@ function JobOrderForm({ customers = [], onCreated, onError }) {
       const customer = await resolveCustomerId()
       const created = await createJob({
         customer,
-        job_type: isProject ? form.jobType : 'walk_in',
+        job_type: isProject ? selectedJobType : 'walk_in',
         status: 'pending',
         fulfilment: form.fulfilment,
         deadline: form.dateNeeded ? new Date(`${form.dateNeeded}T17:00`).toISOString() : null,
@@ -382,8 +385,8 @@ function JobOrderForm({ customers = [], onCreated, onError }) {
           <p className="text-sm font-bold text-navy">Contract / project details</p>
           <label className="block text-sm font-semibold text-slate-700">
             Job type
-            <select value={form.jobType} onChange={set('jobType')} className={inputClass}>
-              {projectJobTypes.map((value) => (
+            <select value={selectedJobType} onChange={set('jobType')} className={inputClass}>
+              {typeOptions.map((value) => (
                 <option key={value} value={value}>
                   {titleCase(value)}
                 </option>

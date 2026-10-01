@@ -1,11 +1,12 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react'
-import { ChevronDown, Search } from 'lucide-react'
+import { ChevronDown, Plus, Search, X } from 'lucide-react'
 import { Link, useSearchParams } from 'react-router-dom'
-import Footer from '../components/Footer'
 import JobOrderForm from '../components/JobOrderForm'
+import TeamPageHeader from '../components/TeamPageHeader'
 import TeamNavbar from '../components/TeamNavbar'
 import { useAuth } from '../context/authContext'
 import { getCustomersData } from '../services/customersService'
+import { getSystemSetting } from '../services/operationsService'
 import { createPaymentRecord } from '../services/operationsService'
 import {
   getDailySummary,
@@ -24,12 +25,12 @@ const orderStatusOptions = [
 ]
 
 const queueViewOptions = [
-  { value: 'needs_attention', label: 'Needs Attention' },
-  { value: 'in_progress', label: 'In Progress' },
+  { value: 'needs_attention', label: 'Needs attention' },
+  { value: 'in_progress', label: 'In progress' },
   { value: 'ready', label: 'Ready' },
-  { value: 'payment_issues', label: 'Payment Issues' },
-  { value: 'completed', label: 'Completed' },
-  { value: 'all', label: 'All Jobs' },
+  { value: 'payment_issues', label: 'Owes money' },
+  { value: 'completed', label: 'Done' },
+  { value: 'all', label: 'All' },
 ]
 
 function getTodayDateValue() {
@@ -56,13 +57,6 @@ function formatDateTime(value) {
     dateStyle: 'medium',
     timeStyle: 'short',
   })
-}
-
-function formatDate(value) {
-  if (!value) return 'No activity yet'
-  const parsed = new Date(value)
-  if (Number.isNaN(parsed.getTime())) return 'No activity yet'
-  return parsed.toLocaleDateString('en-NG', { dateStyle: 'medium' })
 }
 
 function toDateTimeLocalValue(value) {
@@ -172,6 +166,8 @@ function TeamOrdersDashboard() {
   // Jobs from earlier days opened through a ?focusJobId= link (Records / Reports);
   // the queue itself only holds today's jobs.
   const [linkedJobIds, setLinkedJobIds] = useState([])
+  const [showNewJob, setShowNewJob] = useState(false)
+  const [jobCategories, setJobCategories] = useState([])
   const [collectDrafts, setCollectDrafts] = useState({})
   const [collectingOrderId, setCollectingOrderId] = useState(null)
   const [missingJobIds, setMissingJobIds] = useState([])
@@ -210,6 +206,13 @@ function TeamOrdersDashboard() {
     loadDashboard(summaryDate)
   }, [loadDashboard, summaryDate])
 
+  useEffect(() => {
+    // Job types for contract/project jobs come from Settings when the owner has set them.
+    getSystemSetting()
+      .then(({ setting }) => setJobCategories(setting?.jobCategories || []))
+      .catch(() => setJobCategories([]))
+  }, [])
+
   // The queue only holds today's jobs, so reload once the day rolls over if the desk is left open.
   useEffect(() => {
     let currentDay = getWATDateKey(new Date())
@@ -218,7 +221,8 @@ function TeamOrdersDashboard() {
       if (today === currentDay) return
       currentDay = today
       setLinkedJobIds([])
-      loadDashboard(summaryDate)
+      setSummaryDate(getTodayDateValue())
+      loadDashboard(getTodayDateValue())
     }, 60 * 1000)
     return () => window.clearInterval(timer)
   }, [loadDashboard, summaryDate])
@@ -286,23 +290,6 @@ function TeamOrdersDashboard() {
     setVisibleQueueCount(6)
   }, [deferredQueueSearch, queueView])
 
-  const recentCustomers = useMemo(() => {
-    return [...customers]
-      .sort((a, b) => {
-        const aTime = a?.last_job_date ? new Date(a.last_job_date).getTime() : 0
-        const bTime = b?.last_job_date ? new Date(b.last_job_date).getTime() : 0
-        return bTime - aTime
-      })
-      .slice(0, 8)
-  }, [customers])
-
-  const customerSegments = useMemo(() => {
-    const recurring = customers.filter((item) => item.customer_type === 'recurring').length
-    const premium = customers.filter((item) => item.customer_type === 'premium').length
-    const followUp = customers.filter((item) => item.follow_up_flag).length
-    return { recurring, premium, followUp }
-  }, [customers])
-
   const activeOrders = useMemo(() => orders.filter((order) => isActiveDeskJob(order)), [orders])
 
   const completedOrders = useMemo(() => orders.filter((order) => isCompletedJob(order)), [orders])
@@ -311,21 +298,6 @@ function TeamOrdersDashboard() {
     () => orders.filter((order) => isCompletedWithPaymentIssue(order)),
     [orders],
   )
-
-  const deskStats = useMemo(() => {
-    const overdue = activeOrders.filter((item) => item.isOverdue).length
-    const unpaid = activeOrders.filter((item) => item.paymentStatus === 'unpaid').length
-    const partiallyPaid = activeOrders.filter((item) => item.paymentStatus === 'partial').length
-    const activeRevenue = activeOrders.reduce((sum, item) => sum + Number(item.totalAmount || 0), 0)
-
-    return {
-      activeJobs: activeOrders.length,
-      overdue,
-      unpaid,
-      partiallyPaid,
-      activeRevenue,
-    }
-  }, [activeOrders])
 
   const filteredQueueOrders = useMemo(() => {
     const query = deferredQueueSearch.trim().toLowerCase()
@@ -389,16 +361,22 @@ function TeamOrdersDashboard() {
     [activeOrders, completedJobsWithPaymentIssues.length, completedOrders.length, orders],
   )
 
-  const attentionOrders = useMemo(() => {
-    return orders
-      .filter(
-        (order) =>
-          (isActiveDeskJob(order) && (order.isOverdue || order.status === 'pending')) ||
-          isCompletedWithPaymentIssue(order),
-      )
-      .sort(compareDeskOrders)
+  const todaySummary = useMemo(() => {
+    const today = getWATDateKey(new Date())
+    const todays = orders.filter((order) => getWATDateKey(order.created_at) === today)
+    return {
+      jobs: todays.length,
+      toDo: todays.filter((order) => isActiveDeskJob(order)).length,
+      owed: todays
+        .filter((order) => order.status !== 'cancelled')
+        .reduce((sum, order) => sum + Number(order.balanceDue || 0), 0),
+    }
   }, [orders])
 
+  async function handleJobCreated(message) {
+    setShowNewJob(false)
+    await refreshAfterJobChange(message)
+  }
 
   async function refreshAfterJobChange(message) {
     await loadDashboard(summaryDate)
@@ -537,163 +515,88 @@ function TeamOrdersDashboard() {
     setExpandedOrderId((current) => (current === orderId ? null : orderId))
   }
 
-  function focusOrder(orderId) {
-    setQueueView('needs_attention')
-    setQueueSearch('')
-    setExpandedOrderId(orderId)
-    if (typeof document !== 'undefined') {
-      document.getElementById('desk-job-list')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    }
-  }
-
   return (
     <>
       <TeamNavbar />
-      <main className="bg-[#F4F8FC]">
-        <section className="relative overflow-hidden bg-gradient-to-br from-[#102848] via-[#17365d] to-[#214672] py-10 text-white">
-          <div className="pointer-events-none absolute -left-8 top-6 h-28 w-28 bg-yellow/20 blur-3xl" />
-          <div className="pointer-events-none absolute right-8 top-10 h-24 w-24 bg-white/10 blur-3xl" />
-          <div className="container-shell relative">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-yellow">
-              Front Desk
-            </p>
-            <div className="mt-3 grid gap-6 lg:grid-cols-[1.1fr_0.9fr] lg:items-end">
-              <div>
-                <h1 className="text-3xl font-extrabold text-white sm:text-4xl">
-                  Manage jobs, customers, and payments from one screen.
-                </h1>
-                <p className="mt-4 max-w-3xl text-sm leading-6 text-slate-100 sm:text-base">
-                  Add a job, choose the customer, update payment, and check today&apos;s jobs in one
-                  place.
-                </p>
-              </div>
+      <main className="min-h-screen bg-[#F4F8FC] pb-12">
+        <TeamPageHeader
+          title="Today"
+          subtitle={new Date().toLocaleDateString('en-NG', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+        >
+          <button
+            type="button"
+            onClick={() => setShowNewJob((current) => !current)}
+            aria-expanded={showNewJob}
+            className="btn-primary inline-flex min-h-[48px] w-full items-center justify-center gap-2 sm:w-auto"
+          >
+            {showNewJob ? <X size={18} /> : <Plus size={18} />}
+            {showNewJob ? 'Close new job' : 'New job'}
+          </button>
+        </TeamPageHeader>
 
-              <div className="grid gap-3 sm:grid-cols-2">
-                <DeskStatCard label="Active Jobs" value={deskStats.activeJobs} tone="dark" />
-                <DeskStatCard label="Overdue" value={deskStats.overdue} tone="alert" />
-                <DeskStatCard label="Partial Payments" value={deskStats.partiallyPaid} tone="dark" />
-                <DeskStatCard label="Queue Value" value={formatCurrency(deskStats.activeRevenue)} tone="accent" />
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section className="container-shell py-8 md:py-10">
+        <section className="container-shell py-6">
           {statusMessage ? (
-            <div className="mb-6 border border-navy/20 bg-navy/5 px-4 py-3 text-sm text-slate-700 shadow-sm">
+            <div className="mb-5 border border-navy/20 bg-navy/5 px-4 py-3 text-sm text-slate-700 shadow-sm">
               {statusMessage}
             </div>
           ) : null}
 
-          <div className="flex flex-col gap-8">
-            <div className="order-2 grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-            <section id="new-job" className="border border-slate-200 bg-white p-5 shadow-sm md:p-6">
-              <h2 className="text-2xl font-extrabold text-navy">New job</h2>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <SummaryStat label="Jobs today" value={todaySummary.jobs} />
+            <SummaryStat label="Still to do" value={todaySummary.toDo} />
+            <SummaryStat label="Owed on today's jobs" value={formatCurrency(todaySummary.owed)} alert={todaySummary.owed > 0} />
+            <SummaryStat label="Paid in today" value={formatCurrency(dailySummary?.total_revenue ?? 0)} />
+          </div>
+
+          {showNewJob ? (
+            <section id="new-job" className="mt-5 border border-slate-200 bg-white p-5 shadow-sm md:p-6">
+              <h2 className="text-xl font-extrabold text-navy">New job</h2>
               <p className="mt-1 text-sm text-slate-600">Fill it in like the paper job order form.</p>
               <div className="mt-5">
-                <JobOrderForm customers={customers} onCreated={refreshAfterJobChange} onError={setStatusMessage} />
+                <JobOrderForm
+                  customers={customers}
+                  jobTypes={jobCategories}
+                  onCreated={handleJobCreated}
+                  onError={setStatusMessage}
+                />
               </div>
             </section>
+          ) : null}
 
-            <section className="space-y-6">
-              <div className="border border-slate-200 bg-white p-5 shadow-sm md:p-6">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                  Customers
-                </p>
-                <h2 className="mt-1 text-2xl font-extrabold text-navy">Recent Customers</h2>
-
-                <div className="mt-5 grid gap-3 sm:grid-cols-3">
-                  <MiniValueCard label="Recurring" value={customerSegments.recurring} />
-                  <MiniValueCard label="Premium" value={customerSegments.premium} />
-                  <MiniValueCard label="Follow-up" value={customerSegments.followUp} />
-                </div>
-
-                <div className="mt-5 space-y-3">
-                  {recentCustomers.slice(0, 4).map((customer) => (
-                    <div key={customer.id} className="border border-slate-200 bg-slate-50 px-4 py-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="font-bold text-slate-900">{customer.full_name}</p>
-                          <p className="mt-1 text-sm text-slate-500">
-                            {customer.business_name || customer.phone || 'No extra contact info'}
-                          </p>
-                        </div>
-                        <span className="border border-slate-300 bg-white px-2 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">
-                          {titleCase(customer.customer_type)}
-                        </span>
-                      </div>
-                      <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold text-slate-500">
-                        <span className="border border-slate-200 bg-white px-2 py-1">
-                          Last job: {formatDate(customer.last_job_date)}
-                        </span>
-                        <span className="border border-slate-200 bg-white px-2 py-1">
-                          Orders: {customer.ordersCount}
-                        </span>
-                        {customer.follow_up_flag ? (
-                          <span className="border border-yellow/50 bg-yellow/10 px-2 py-1 text-yellow-800">
-                            Follow-up flagged
-                          </span>
-                        ) : null}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </section>
-            </div>
-
-            <section id="desk-job-list" className="order-1 border border-slate-200 bg-white p-5 shadow-sm md:p-6">
-              <div className="flex flex-wrap items-center justify-between gap-3">
+          <section id="desk-job-list" className="mt-5 border border-slate-200 bg-white p-5 shadow-sm md:p-6">
+            <div className="flex flex-wrap items-end justify-between gap-3">
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                  Job List
-                </p>
-                <h2 className="mt-1 text-2xl font-extrabold text-navy">Today&apos;s Jobs</h2>
-                <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-                  Active jobs show first. At the end of each day, jobs move to{' '}
+                <h2 className="text-xl font-extrabold text-navy">Jobs</h2>
+                <p className="mt-1 text-sm text-slate-600">
+                  Older jobs are in{' '}
                   <Link to="/team/records" className="font-semibold text-navy underline underline-offset-2">
                     Records
                   </Link>
-                  , where you can still check details, update status, and log payments.
+                  .
                 </p>
               </div>
-              {loading ? (
-                <span className="text-sm text-slate-500">Loading queue...</span>
-              ) : (
-                <span className="border border-slate-200 bg-slate-50 px-3 py-1 text-sm font-semibold text-slate-600">
-                  {activeOrders.length} active / {completedOrders.length} completed
-                </span>
-              )}
+              {loading ? <span className="text-sm text-slate-500">Loading...</span> : null}
             </div>
 
-            <div className="mt-5 grid gap-6 xl:grid-cols-[1.2fr_0.8fr] xl:items-start">
-              <div>
-                <div className="grid gap-3 lg:grid-cols-[1.2fr_0.8fr]">
-                  <label className="flex items-center gap-1.5 rounded-md border border-slate-200/80 bg-white px-2.5 py-1">
-                    <Search size={14} className="text-slate-400" />
-                    <input
-                      value={queueSearch}
-                      onChange={(e) => setQueueSearch(e.target.value)}
-                      className="w-full bg-transparent text-xs leading-5 outline-none placeholder:text-slate-400"
-                      placeholder="Search customer, phone, job type, or request details"
-                    />
-                  </label>
+            <label className="mt-4 flex min-h-[44px] items-center gap-2 border border-slate-300 bg-white px-3">
+              <Search size={16} className="text-slate-500" />
+              <input
+                value={queueSearch}
+                onChange={(e) => setQueueSearch(e.target.value)}
+                className="w-full bg-transparent py-2 text-[15px] outline-none placeholder:text-slate-500"
+                placeholder="Search name, phone or job"
+                aria-label="Search jobs"
+              />
+            </label>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <MiniValueCard label="Attention" value={queueCounts.needsAttention} compact />
-                    <MiniValueCard label="In Progress" value={queueCounts.inProgress} compact />
-                    <MiniValueCard label="Ready" value={queueCounts.ready} compact />
-                    <MiniValueCard label="Payment Issues" value={queueCounts.paymentIssues} compact />
-                  </div>
-                </div>
-
+            <div>
                 <div className="mt-4 flex flex-wrap gap-2">
                   {queueViewOptions.map((option) => (
                     <button
                       key={option.value}
                       type="button"
                       onClick={() => setQueueView(option.value)}
-                      className={`border px-3 py-2 text-sm font-semibold transition ${
+                      className={`min-h-[44px] border px-3 text-sm font-semibold transition ${
                         queueView === option.value
                           ? 'border-navy bg-navy text-white'
                           : 'border-slate-300 bg-white text-slate-700 hover:border-navy hover:text-navy'
@@ -759,86 +662,56 @@ function TeamOrdersDashboard() {
                         aria-expanded={isExpanded}
                       >
                         <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                              Job #{order.id}
-                            </p>
-                            <span className="border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-600">
+                          <div className="flex flex-wrap items-center gap-2 text-xs font-semibold">
+                            <span className="text-slate-500">Job #{order.id}</span>
+                            <span className="border border-slate-300 bg-white px-2 py-0.5 text-slate-700">
                               {titleCase(order.status)}
                             </span>
-                            <span className="border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-600">
-                              {titleCase(order.paymentStatus)}
-                            </span>
                             {order.isOverdue ? (
-                              <span className="border border-red-300 bg-red-100 px-2 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-red-700">
-                                Overdue
-                              </span>
-                            ) : null}
-                            {hasPaymentIssue ? (
-                              <span className="border border-amber-300 bg-amber-100 px-2 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-amber-800">
-                                Payment Review
-                              </span>
+                              <span className="border border-red-300 bg-red-100 px-2 py-0.5 text-red-700">Overdue</span>
                             ) : null}
                             {isFromEarlierDay ? (
-                              <span className="border border-slate-300 bg-white px-2 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-600">
+                              <span className="border border-slate-300 bg-slate-100 px-2 py-0.5 text-slate-600">
                                 From {createdDay}
                               </span>
                             ) : null}
                           </div>
-                          <h3 className="mt-2 text-xl font-extrabold text-slate-900">
-                            {titleCase(order.jobType)}
-                          </h3>
-                          <p className="mt-2 text-sm font-semibold text-slate-700">
+                          <h3 className="mt-2 text-lg font-extrabold text-slate-900">
                             {order.customerName || 'Walk-in'}
-                          </p>
-                          <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-600">
+                          </h3>
+                          <p className="mt-1 max-w-4xl text-sm leading-6 text-slate-600">
+                            {order.jobType && order.jobType !== 'walk_in' ? `${titleCase(order.jobType)} · ` : ''}
                             {order.description || 'No description added.'}
                           </p>
-                          <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-semibold uppercase tracking-[0.12em]">
-                            <span className="border border-slate-200 bg-slate-50 px-2 py-1 text-slate-600">
-                              {order.items?.length
-                                ? `${order.items.length} item${order.items.length === 1 ? '' : 's'}`
-                                : `Qty ${order.quantity || 1}`}
-                            </span>
-                            <span className="border border-slate-200 bg-slate-50 px-2 py-1 text-slate-600">
-                              Total {formatCurrency(order.totalAmount)}
-                            </span>
-                            {order.discountAmount > 0 ? (
-                              <span
-                                className="border border-emerald-200 bg-emerald-50 px-2 py-1 text-emerald-700"
-                                title={order.discountReason || undefined}
-                              >
-                                Discount {formatCurrency(order.discountAmount)}
-                              </span>
-                            ) : null}
-                            <span className="border border-slate-200 bg-slate-50 px-2 py-1 text-slate-600">
-                              Balance {formatCurrency(order.balanceDue)}
-                            </span>
-                            <span className="border border-slate-200 bg-slate-50 px-2 py-1 text-slate-600">
-                              {order.deadline ? formatDateTime(order.deadline) : 'No deadline'}
-                            </span>
-                            <span className="border border-slate-200 bg-slate-50 px-2 py-1 text-slate-600">
-                              {order.createdByName ? `Created by ${order.createdByName}` : 'Website submission'}
-                            </span>
-                            {order.customerBusinessName ? (
-                              <span className="border border-slate-200 bg-slate-50 px-2 py-1 text-slate-600">
-                                {order.customerBusinessName}
-                              </span>
-                            ) : null}
-                          </div>
+                          {order.deadline || order.discountAmount > 0 ? (
+                            <p className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-600">
+                              {order.deadline ? <span>Due {formatDateTime(order.deadline)}</span> : null}
+                              {order.discountAmount > 0 ? (
+                                <span className="text-emerald-700" title={order.discountReason || undefined}>
+                                  Discount {formatCurrency(order.discountAmount)}
+                                </span>
+                              ) : null}
+                            </p>
+                          ) : null}
                         </div>
 
-                        <div className="flex items-center gap-3 self-start">
-                          <div className="text-right">
-                            <p className="text-sm font-bold text-navy">{formatCurrency(order.totalAmount)}</p>
-                            <p className="mt-1 text-xs uppercase tracking-[0.12em] text-slate-500">
-                              {isExpanded ? 'Collapse' : 'Expand'}
-                            </p>
+                        <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-3 sm:block sm:border-0 sm:pt-0 sm:text-right">
+                          <div>
+                            <p className="text-base font-extrabold text-slate-900">{formatCurrency(order.amountDue)}</p>
+                            {Number(order.totalAmount || 0) === 0 ? (
+                              <p className="text-sm font-semibold text-slate-500">Not priced yet</p>
+                            ) : Number(order.balanceDue || 0) > 0 ? (
+                              <p className={`text-sm font-semibold ${hasPaymentIssue ? 'text-red-700' : 'text-amber-700'}`}>
+                                Owes {formatCurrency(order.balanceDue)}
+                              </p>
+                            ) : (
+                              <p className="text-sm font-semibold text-emerald-700">Paid</p>
+                            )}
                           </div>
-                          <ChevronDown
-                            size={18}
-                            className={`mt-1 shrink-0 text-slate-500 transition ${isExpanded ? 'rotate-180' : ''}`}
-                          />
+                          <span className="inline-flex min-h-[44px] items-center gap-1 text-sm font-semibold text-navy sm:mt-1 sm:min-h-0">
+                            {isExpanded ? 'Hide details' : 'Details'}
+                            <ChevronDown size={18} className={`shrink-0 transition ${isExpanded ? 'rotate-180' : ''}`} />
+                          </span>
                         </div>
                       </button>
 
@@ -907,7 +780,7 @@ function TeamOrdersDashboard() {
                       <div className="mt-4 grid gap-2 sm:grid-cols-2">
                         {order.customerPhone ? (
                           <div className="border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
-                            <span className="block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+                            <span className="block text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
                               Phone
                             </span>
                             <span className="mt-1 block font-semibold text-slate-800">{order.customerPhone}</span>
@@ -915,7 +788,7 @@ function TeamOrdersDashboard() {
                         ) : null}
                         {order.customerEmail ? (
                           <div className="border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
-                            <span className="block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+                            <span className="block text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
                               Email
                             </span>
                             <span className="mt-1 block break-all font-semibold text-slate-800">{order.customerEmail}</span>
@@ -926,7 +799,7 @@ function TeamOrdersDashboard() {
 
                     <div className="mt-4 grid gap-3 sm:grid-cols-2">
                       <div className="border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
-                        <span className="block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+                        <span className="block text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
                           Deadline
                         </span>
                         <span className="mt-1 block font-semibold text-slate-800">
@@ -935,7 +808,7 @@ function TeamOrdersDashboard() {
                       </div>
 
                       <div className="border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
-                        <span className="block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+                        <span className="block text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
                           Balance Due
                         </span>
                         <span className="mt-1 block font-semibold text-slate-800">
@@ -946,7 +819,7 @@ function TeamOrdersDashboard() {
 
                     {order.specialInstructions ? (
                       <div className="mt-4 border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700">
-                        <span className="block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+                        <span className="block text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
                           Submission Details
                         </span>
                         <p className="mt-2 whitespace-pre-line leading-6">{order.specialInstructions}</p>
@@ -955,7 +828,7 @@ function TeamOrdersDashboard() {
 
                     {order.projectScopeNote ? (
                       <div className="mt-4 border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700">
-                        <span className="block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+                        <span className="block text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
                           Request Notes
                         </span>
                         <p className="mt-2 whitespace-pre-line leading-6">{order.projectScopeNote}</p>
@@ -968,9 +841,7 @@ function TeamOrdersDashboard() {
                         const collectPreview = getCollectPreview(order)
                         return (
                           <div className="mt-4 border border-navy/20 bg-white px-4 py-4">
-                            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
-                              Collect Payment
-                            </p>
+                            <p className="text-sm font-bold text-navy">Take payment</p>
                             <h4 className="mt-1 text-base font-extrabold text-slate-900">
                               Balance {formatCurrency(order.balanceDue)}
                               {order.discountAmount > 0 ? (
@@ -1059,11 +930,11 @@ function TeamOrdersDashboard() {
                       <div className="mt-4 border border-slate-200 bg-slate-50 px-4 py-4">
                         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                           <div>
-                            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
-                              Queue Management
+                            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+                              Owner only
                             </p>
                             <h4 className="mt-1 text-base font-extrabold text-slate-900">
-                              Update quantity, pricing, payment, and deadline
+                              Change prices, amount paid or deadline
                             </h4>
                           </div>
                         </div>
@@ -1164,7 +1035,7 @@ function TeamOrdersDashboard() {
 
                     {order.attachments?.length ? (
                       <div className="mt-4 border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700">
-                        <span className="block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+                        <span className="block text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
                           Uploaded Assets
                         </span>
                         <div className="mt-3 flex flex-wrap gap-2">
@@ -1185,7 +1056,7 @@ function TeamOrdersDashboard() {
 
                     {hasPaymentIssue ? (
                       <div className="mt-4 border border-amber-300 bg-amber-100 px-3 py-2 text-xs font-bold uppercase tracking-[0.14em] text-amber-800">
-                        Completed job still has payment outstanding. Review and update payment here or from operations.
+                        Done, but the customer still owes {formatCurrency(order.balanceDue)}. Take payment above.
                       </div>
                     ) : null}
 
@@ -1243,114 +1114,10 @@ function TeamOrdersDashboard() {
                   </div>
                 ) : null}
               </div>
-
-              <div className="space-y-6">
-                <div className="border border-slate-200 bg-slate-50 p-5">
-                  <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                        Today
-                      </p>
-                      <h3 className="mt-1 text-xl font-extrabold text-navy">Today&apos;s Numbers</h3>
-                    </div>
-                    <input
-                      type="date"
-                      value={summaryDate}
-                      onChange={(e) => setSummaryDate(e.target.value)}
-                      className="w-full border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-navy sm:w-auto"
-                    />
-                  </div>
-
-                  <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                    <MiniValueCard label="Jobs Created" value={dailySummary?.jobs_created ?? 0} />
-                    <MiniValueCard label="Jobs Completed" value={dailySummary?.jobs_completed ?? 0} />
-                    <MiniValueCard label="Payments Logged" value={dailySummary?.payments_received ?? 0} />
-                    <MiniValueCard label="Outstanding" value={formatCurrency(dailySummary?.outstanding_balances ?? 0)} />
-                  </div>
-                </div>
-
-                <div className="border border-red-200 bg-red-50/70 p-5">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-red-700">
-                        Attention
-                      </p>
-                      <h3 className="mt-1 text-xl font-extrabold text-red-900">Jobs Needing Attention</h3>
-                    </div>
-                    <span className="border border-red-200 bg-white px-3 py-1 text-sm font-semibold text-red-700">
-                      {attentionOrders.length} job{attentionOrders.length === 1 ? '' : 's'}
-                    </span>
-                  </div>
-
-                  <div className="mt-4 space-y-3">
-                    {attentionOrders.length ? (
-                      attentionOrders.map((order) => (
-                        <article key={`attention-${order.id}`} className="border border-red-200 bg-white px-4 py-3">
-                          <div className="flex flex-wrap items-start justify-between gap-3">
-                            <div>
-                              <p className="font-bold text-slate-900">
-                                Job #{order.id} - {order.customerName || 'Walk-in'}
-                              </p>
-                              <p className="mt-1 text-sm text-slate-600">
-                                {titleCase(order.jobType)} - {order.description || 'No description added.'}
-                              </p>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => focusOrder(order.id)}
-                              className="border border-red-300 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-100"
-                            >
-                              Open Job
-                            </button>
-                          </div>
-
-                          <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold uppercase tracking-[0.12em]">
-                            <span className="border border-slate-200 bg-slate-50 px-2 py-1 text-slate-600">
-                              {titleCase(order.status)}
-                            </span>
-                            <span className="border border-slate-200 bg-slate-50 px-2 py-1 text-slate-600">
-                              {titleCase(order.paymentStatus)}
-                            </span>
-                            <span className="border border-slate-200 bg-slate-50 px-2 py-1 text-slate-600">
-                              Balance {formatCurrency(order.balanceDue)}
-                            </span>
-                            <span className="border border-slate-200 bg-slate-50 px-2 py-1 text-slate-600">
-                              {order.deadline ? formatDateTime(order.deadline) : 'No deadline'}
-                            </span>
-                          </div>
-                        </article>
-                      ))
-                    ) : (
-                      <div className="border border-dashed border-red-200 bg-white px-4 py-10 text-center text-sm text-slate-500">
-                        No jobs need attention right now.
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
           </section>
-          </div>
         </section>
       </main>
-      <Footer />
     </>
-  )
-}
-
-function DeskStatCard({ label, value, tone = 'dark' }) {
-  const toneClass =
-    tone === 'accent'
-      ? 'border-yellow bg-yellow text-slate-900'
-      : tone === 'alert'
-        ? 'border-red-300/40 bg-red-500/20 text-white'
-        : 'border-white/15 bg-white/10 text-white'
-
-  return (
-    <div className={`border px-4 py-4 shadow-sm ${toneClass}`}>
-      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] opacity-90">{label}</p>
-      <p className="mt-2 text-2xl font-extrabold">{value}</p>
-    </div>
   )
 }
 
@@ -1363,7 +1130,7 @@ function MiniValueCard({ label, value, compact = false }) {
     >
       <p
         className={`font-semibold uppercase text-slate-500 ${
-          compact ? 'text-[10px] leading-4 tracking-[0.08em]' : 'text-[11px] tracking-[0.14em]'
+          compact ? 'text-xs leading-4 tracking-[0.08em]' : 'text-xs tracking-[0.14em]'
         }`}
       >
         {label}
@@ -1389,3 +1156,12 @@ function AlertRow({ label, value, danger }) {
 }
 
 export default TeamOrdersDashboard
+
+function SummaryStat({ label, value, alert = false }) {
+  return (
+    <div className={`border px-4 py-3 ${alert ? 'border-red-200 bg-red-50' : 'border-slate-200 bg-white'}`}>
+      <p className="text-sm text-slate-600">{label}</p>
+      <p className={`mt-1 text-xl font-extrabold ${alert ? 'text-red-700' : 'text-slate-900'}`}>{value}</p>
+    </div>
+  )
+}

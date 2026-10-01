@@ -122,7 +122,7 @@ function TeamInviteAcceptPage() {
 
             <div className="relative z-10 mx-auto w-full max-w-md">
               <div className="border-t-4 border-yellow bg-white px-6 py-8 shadow-[0_30px_90px_rgba(19,27,67,0.34)] sm:px-8 sm:py-10">
-                <p className="text-center text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+                <p className="text-center text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
                   Team Access
                 </p>
 
@@ -239,7 +239,7 @@ function TeamInviteAcceptPage() {
                   </form>
                 ) : null}
 
-                <div className="mt-10 flex items-center justify-between gap-3 text-[11px] text-slate-400">
+                <div className="mt-10 flex items-center justify-between gap-3 text-xs text-slate-400">
                   <Link to="/" className="font-semibold text-navy transition hover:text-navy-dark">
                     Main Website
                   </Link>

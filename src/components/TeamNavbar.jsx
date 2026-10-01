@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/authContext'
 
 const teamLinks = [
-  { label: 'Desk', to: '/team' },
+  { label: 'Today', to: '/team' },
   { label: 'Records', to: '/team/records' },
   { label: 'Reports', to: '/team/reports', ownerOnly: true },
   { label: 'Settings', to: '/team/settings', ownerOnly: true },
@@ -48,7 +48,7 @@ function TeamNavbar() {
               alt="Bilta logo"
               className="h-11 w-auto object-contain"
             />
-            <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-yellow">Team CMS</p>
+            <p className="mt-1 text-xs font-semibold uppercase tracking-[0.14em] text-yellow">Team CMS</p>
           </div>
 
           <button
@@ -76,7 +76,7 @@ function TeamNavbar() {
         {mobileMenuOpen ? (
           <div className="mt-3 space-y-3 border border-white/15 bg-white/10 p-3 sm:hidden">
             <div className="border border-white/15 bg-white/10 px-3 py-2 text-left">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-yellow">
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-yellow">
                 {isOwner ? 'Owner/Admin' : 'Staff'}
               </p>
               <p className="mt-1 text-sm font-bold text-white">
@@ -127,7 +127,7 @@ function TeamNavbar() {
               alt="Bilta logo"
               className="h-12 w-auto object-contain"
             />
-            <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-yellow">Team CMS</p>
+            <p className="mt-1 text-xs font-semibold uppercase tracking-[0.14em] text-yellow">Team CMS</p>
           </div>
 
           <div className="flex flex-wrap items-center justify-end gap-2">
@@ -135,7 +135,7 @@ function TeamNavbar() {
               <Link
                 key={item.to}
                 to={item.to}
-                className={`rounded-md border px-3 py-1.5 text-sm font-semibold transition ${
+                className={`inline-flex min-h-[44px] items-center rounded-md border px-3 text-sm font-semibold transition ${
                   isLinkActive(item)
                     ? 'border-yellow bg-yellow text-slate-900'
                     : 'border-white/20 bg-white/8 text-white hover:border-yellow hover:text-yellow'
@@ -162,7 +162,7 @@ function TeamNavbar() {
             </button>
 
             <div className="border border-white/15 bg-white/10 px-3 py-1.5 text-right">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-yellow">
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-yellow">
                 {isOwner ? 'Owner/Admin' : 'Staff'}
               </p>
               <p className="text-sm font-bold text-white">{user?.display_name || user?.username || 'Team User'}</p>
