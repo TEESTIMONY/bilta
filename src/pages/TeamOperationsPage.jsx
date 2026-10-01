@@ -333,7 +333,7 @@ function TeamOperationsPage() {
 
     if (discountPreview?.hasAgreed && discountPreview.invalid) {
       setStatusMessage(
-        `The discounted price must be between ${formatCurrency(discountPreview.alreadyPaid)} (already paid) and ${formatCurrency(discountPreview.total)} (job total).`,
+        `The agreed price must be between ${formatCurrency(discountPreview.alreadyPaid)} (already paid) and ${formatCurrency(discountPreview.total)} (job total).`,
       )
       return
     }
@@ -875,7 +875,7 @@ function TeamOperationsPage() {
 
                       <div className="mt-4 grid gap-3 md:grid-cols-2">
                         <label className="block text-sm font-semibold text-slate-700">
-                          Discounted price (optional)
+                          Agreed price (after discount) <span className="font-normal text-slate-500">(optional)</span>
                           <input
                             type="number"
                             min="0"
@@ -901,7 +901,7 @@ function TeamOperationsPage() {
                       {discountPreview.hasAgreed ? (
                         discountPreview.invalid ? (
                           <p className="mt-3 border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                            The discounted price must be between {formatCurrency(discountPreview.alreadyPaid)} (already paid) and{' '}
+                            The agreed price must be between {formatCurrency(discountPreview.alreadyPaid)} (already paid) and{' '}
                             {formatCurrency(discountPreview.total)} (job total).
                           </p>
                         ) : (

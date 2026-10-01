@@ -126,7 +126,7 @@ function JobOrderForm({ customers = [], jobTypes = [], onCreated, onError }) {
       return
     }
     if (discountInvalid) {
-      onError?.(`The discounted price must be between ${formatCurrency(paid)} (paid now) and ${formatCurrency(total)} (total).`)
+      onError?.(`The agreed price must be between ${formatCurrency(paid)} (paid now) and ${formatCurrency(total)} (total).`)
       return
     }
 
@@ -318,7 +318,7 @@ function JobOrderForm({ customers = [], jobTypes = [], onCreated, onError }) {
 
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="block text-sm font-semibold text-slate-700">
-            Discounted price <span className="font-normal text-slate-500">(optional)</span>
+            Agreed price (after discount) <span className="font-normal text-slate-500">(optional)</span>
             <input
               type="number"
               min="0"
@@ -353,7 +353,7 @@ function JobOrderForm({ customers = [], jobTypes = [], onCreated, onError }) {
 
         {hasDiscount && discountInvalid ? (
           <p className="border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            The discounted price must be between {formatCurrency(paid)} (paid now) and {formatCurrency(total)} (total).
+            The agreed price must be between {formatCurrency(paid)} (paid now) and {formatCurrency(total)} (total).
           </p>
         ) : null}
 

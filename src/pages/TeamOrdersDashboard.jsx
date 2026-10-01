@@ -482,7 +482,7 @@ function TeamOrdersDashboard() {
     }
     if (preview.invalid) {
       setStatusMessage(
-        `The discounted price must be between ${formatCurrency(preview.alreadyPaid)} (already paid) and ${formatCurrency(preview.total)} (job total).`,
+        `The agreed price must be between ${formatCurrency(preview.alreadyPaid)} (already paid) and ${formatCurrency(preview.total)} (job total).`,
       )
       return
     }
@@ -865,7 +865,7 @@ function TeamOrdersDashboard() {
                                 />
                               </label>
                               <label className="text-sm font-semibold text-slate-700">
-                                Discounted price (optional)
+                                Agreed price (after discount) <span className="font-normal text-slate-500">(optional)</span>
                                 <input
                                   type="number"
                                   min="0"
@@ -891,7 +891,7 @@ function TeamOrdersDashboard() {
                             {collectPreview.hasAgreed ? (
                               collectPreview.invalid ? (
                                 <p className="mt-3 border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                                  The discounted price must be between {formatCurrency(collectPreview.alreadyPaid)} (already
+                                  The agreed price must be between {formatCurrency(collectPreview.alreadyPaid)} (already
                                   paid) and {formatCurrency(collectPreview.total)} (job total).
                                 </p>
                               ) : (
