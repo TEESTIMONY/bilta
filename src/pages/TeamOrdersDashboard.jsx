@@ -1,13 +1,15 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react'
 import { ChevronDown, Search } from 'lucide-react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import Footer from '../components/Footer'
 import TeamNavbar from '../components/TeamNavbar'
 import { useAuth } from '../context/authContext'
 import { createCustomer, getCustomersData } from '../services/customersService'
+import { createPaymentRecord } from '../services/operationsService'
 import {
   createJob,
   getDailySummary,
+  getJob,
   getJobsQueueData,
   updateOrderQuickFields,
 } from '../services/ordersService'
@@ -116,6 +118,17 @@ function titleCase(value) {
     .join(' ')
 }
 
+function getWATDateKey(value) {
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return ''
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Africa/Lagos',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(parsed)
+}
+
 function isCompletedJob(order) {
   return order?.status === 'completed'
 }
@@ -186,19 +199,35 @@ function TeamOrdersDashboard() {
   const [queueSearch, setQueueSearch] = useState('')
   const [queueView, setQueueView] = useState('needs_attention')
   const [visibleQueueCount, setVisibleQueueCount] = useState(6)
+  // Jobs from earlier days opened through a ?focusJobId= link (Records / Reports);
+  // the queue itself only holds today's jobs.
+  const [linkedJobIds, setLinkedJobIds] = useState([])
+  const [collectDrafts, setCollectDrafts] = useState({})
+  const [collectingOrderId, setCollectingOrderId] = useState(null)
+  const [missingJobIds, setMissingJobIds] = useState([])
   const deferredCustomerSearch = useDeferredValue(customerSearch)
   const deferredQueueSearch = useDeferredValue(queueSearch)
 
   const loadDashboard = useCallback(async (date = summaryDate) => {
     setLoading(true)
     try {
-      const [queueData, customerData, summaryData] = await Promise.all([
+      const [queueData, customerData, summaryData, linkedJobResults] = await Promise.all([
         getJobsQueueData(),
         getCustomersData(),
         getDailySummary(date),
+        Promise.allSettled(linkedJobIds.map((jobId) => getJob(jobId))),
       ])
 
-      setOrders(queueData.orders)
+      const seenIds = new Set(queueData.orders.map((order) => order.id))
+      const linkedJobs = []
+      for (const result of linkedJobResults) {
+        if (result.status !== 'fulfilled' || seenIds.has(result.value.id)) continue
+        seenIds.add(result.value.id)
+        linkedJobs.push(result.value)
+      }
+      setMissingJobIds(linkedJobIds.filter((_, index) => linkedJobResults[index].status === 'rejected'))
+
+      setOrders([...queueData.orders, ...linkedJobs])
       setCustomers(customerData.customers)
       setDailySummary(summaryData.summary)
     } catch (error) {
@@ -206,10 +235,23 @@ function TeamOrdersDashboard() {
     } finally {
       setLoading(false)
     }
-  }, [summaryDate])
+  }, [linkedJobIds, summaryDate])
 
   useEffect(() => {
     loadDashboard(summaryDate)
+  }, [loadDashboard, summaryDate])
+
+  // The queue only holds today's jobs, so reload once the day rolls over if the desk is left open.
+  useEffect(() => {
+    let currentDay = getWATDateKey(new Date())
+    const timer = window.setInterval(() => {
+      const today = getWATDateKey(new Date())
+      if (today === currentDay) return
+      currentDay = today
+      setLinkedJobIds([])
+      loadDashboard(summaryDate)
+    }, 60 * 1000)
+    return () => window.clearInterval(timer)
   }, [loadDashboard, summaryDate])
 
   useEffect(() => {
@@ -243,7 +285,18 @@ function TeamOrdersDashboard() {
     if (!Number.isFinite(targetId)) return
 
     const targetExists = orders.some((order) => order.id === targetId)
-    if (!targetExists) return
+    if (!targetExists) {
+      if (missingJobIds.includes(targetId)) {
+        setStatusMessage(`Job #${targetId} could not be found.`)
+        const nextParams = new URLSearchParams(searchParams)
+        nextParams.delete('focusJobId')
+        setSearchParams(nextParams, { replace: true })
+      } else if (!linkedJobIds.includes(targetId)) {
+        // Not one of today's jobs: load it alongside the queue.
+        setLinkedJobIds((current) => (current.includes(targetId) ? current : [...current, targetId]))
+      }
+      return
+    }
 
     setQueueView('all')
     setQueueSearch('')
@@ -258,7 +311,7 @@ function TeamOrdersDashboard() {
     const nextParams = new URLSearchParams(searchParams)
     nextParams.delete('focusJobId')
     setSearchParams(nextParams, { replace: true })
-  }, [orders, searchParams, setSearchParams])
+  }, [linkedJobIds, missingJobIds, orders, searchParams, setSearchParams])
 
   useEffect(() => {
     setVisibleQueueCount(6)
@@ -458,6 +511,69 @@ function TeamOrdersDashboard() {
       setStatusMessage(`Could not update job details: ${error.message}`)
     } finally {
       setSavingOrderId(null)
+    }
+  }
+
+  function updateCollectDraft(orderId, key, value) {
+    setCollectDrafts((current) => ({
+      ...current,
+      [orderId]: { amount: '', agreedTotal: '', discountReason: '', ...current[orderId], [key]: value },
+    }))
+  }
+
+  function getCollectPreview(order) {
+    const draft = collectDrafts[order.id] || {}
+    const total = Number(order.totalAmount || 0)
+    const alreadyPaid = Number(order.amountPaid || 0)
+    const hasAgreed = draft.agreedTotal !== undefined && draft.agreedTotal !== ''
+    const agreed = hasAgreed ? Number(draft.agreedTotal) : Number(order.amountDue || total)
+    return {
+      total,
+      alreadyPaid,
+      hasAgreed,
+      discount: Math.max(0, total - agreed),
+      leftToPay: Math.max(0, agreed - alreadyPaid),
+      invalid: hasAgreed && (Number.isNaN(agreed) || agreed < alreadyPaid || agreed > total),
+    }
+  }
+
+  async function handleCollectPayment(order) {
+    const draft = collectDrafts[order.id] || {}
+    const amount = Number(draft.amount || 0)
+    const preview = getCollectPreview(order)
+
+    if (!amount || amount <= 0) {
+      setStatusMessage('Enter the amount received before recording the payment.')
+      return
+    }
+    if (preview.invalid) {
+      setStatusMessage(
+        `The discounted price must be between ${formatCurrency(preview.alreadyPaid)} (already paid) and ${formatCurrency(preview.total)} (job total).`,
+      )
+      return
+    }
+
+    setCollectingOrderId(order.id)
+    try {
+      await createPaymentRecord({
+        job: order.id,
+        source: 'job',
+        amount: String(amount),
+        note: 'Collected at the front desk.',
+        ...(preview.hasAgreed
+          ? { agreed_total: String(Number(draft.agreedTotal)), discount_reason: String(draft.discountReason || '').trim() }
+          : {}),
+      })
+      setCollectDrafts((current) => {
+        const next = { ...current }
+        delete next[order.id]
+        return next
+      })
+      await refreshAfterJobChange(`Payment of ${formatCurrency(amount)} recorded for job #${order.id}.`)
+    } catch (error) {
+      setStatusMessage(`Could not record payment: ${error.message}`)
+    } finally {
+      setCollectingOrderId(null)
     }
   }
 
@@ -883,10 +999,13 @@ function TeamOrdersDashboard() {
                 <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
                   Job List
                 </p>
-                <h2 className="mt-1 text-2xl font-extrabold text-navy">All Jobs</h2>
+                <h2 className="mt-1 text-2xl font-extrabold text-navy">Today&apos;s Jobs</h2>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-                  Active jobs show first. Completed jobs also stay here, so you can still check job
-                  details and payment after the work is done.
+                  Active jobs show first. At the end of each day, jobs move to{' '}
+                  <Link to="/team/records" className="font-semibold text-navy underline underline-offset-2">
+                    Records
+                  </Link>
+                  , where you can still check details, update status, and log payments.
                 </p>
               </div>
               {loading ? (
@@ -959,10 +1078,15 @@ function TeamOrdersDashboard() {
                     deadline: toDateTimeLocalValue(order.deadline),
                   }
                   const draftTotal = Math.max(1, Number(queueDraft.quantity || 1)) * Number(queueDraft.unitPrice || 0)
-                  const draftBalance = Math.max(0, draftTotal - Number(queueDraft.amountPaid || 0))
+                  const draftBalance = Math.max(
+                    0,
+                    draftTotal - Number(order.discountAmount || 0) - Number(queueDraft.amountPaid || 0),
+                  )
                   const isExpanded = expandedOrderId === order.id
                   const hasPaymentIssue = isCompletedWithPaymentIssue(order)
                   const isCompleted = isCompletedJob(order)
+                  const createdDay = getWATDateKey(order.created_at)
+                  const isFromEarlierDay = Boolean(createdDay) && createdDay !== getWATDateKey(new Date())
 
                     return (
                       <article
@@ -1004,6 +1128,11 @@ function TeamOrdersDashboard() {
                                 Payment Review
                               </span>
                             ) : null}
+                            {isFromEarlierDay ? (
+                              <span className="border border-slate-300 bg-white px-2 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-600">
+                                From {createdDay}
+                              </span>
+                            ) : null}
                           </div>
                           <h3 className="mt-2 text-xl font-extrabold text-slate-900">
                             {titleCase(order.jobType)}
@@ -1021,6 +1150,14 @@ function TeamOrdersDashboard() {
                             <span className="border border-slate-200 bg-slate-50 px-2 py-1 text-slate-600">
                               Total {formatCurrency(order.totalAmount)}
                             </span>
+                            {order.discountAmount > 0 ? (
+                              <span
+                                className="border border-emerald-200 bg-emerald-50 px-2 py-1 text-emerald-700"
+                                title={order.discountReason || undefined}
+                              >
+                                Discount {formatCurrency(order.discountAmount)}
+                              </span>
+                            ) : null}
                             <span className="border border-slate-200 bg-slate-50 px-2 py-1 text-slate-600">
                               Balance {formatCurrency(order.balanceDue)}
                             </span>
@@ -1120,92 +1257,201 @@ function TeamOrdersDashboard() {
                       </div>
                     ) : null}
 
-                    <div className="mt-4 border border-slate-200 bg-slate-50 px-4 py-4">
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                        <div>
-                          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
-                            Queue Management
-                          </p>
-                          <h4 className="mt-1 text-base font-extrabold text-slate-900">
-                            Update quantity, pricing, payment, and deadline
-                          </h4>
+                    {Number(order.balanceDue || 0) > 0 && order.status !== 'cancelled' ? (
+                      (() => {
+                        const collectDraft = collectDrafts[order.id] || {}
+                        const collectPreview = getCollectPreview(order)
+                        return (
+                          <div className="mt-4 border border-navy/20 bg-white px-4 py-4">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+                              Collect Payment
+                            </p>
+                            <h4 className="mt-1 text-base font-extrabold text-slate-900">
+                              Balance {formatCurrency(order.balanceDue)}
+                              {order.discountAmount > 0 ? (
+                                <span className="ml-2 text-sm font-semibold text-emerald-700">
+                                  (after {formatCurrency(order.discountAmount)} discount)
+                                </span>
+                              ) : null}
+                            </h4>
+
+                            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                              <label className="text-sm font-semibold text-slate-700">
+                                Amount received
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  value={collectDraft.amount || ''}
+                                  onChange={(e) => updateCollectDraft(order.id, 'amount', e.target.value)}
+                                  className="mt-2 w-full border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-navy"
+                                  placeholder="0.00"
+                                />
+                              </label>
+                              <label className="text-sm font-semibold text-slate-700">
+                                Discounted price (optional)
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  value={collectDraft.agreedTotal || ''}
+                                  onChange={(e) => updateCollectDraft(order.id, 'agreedTotal', e.target.value)}
+                                  className="mt-2 w-full border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-navy"
+                                  placeholder={`Agreed total, full price ${formatCurrency(collectPreview.total)}`}
+                                />
+                              </label>
+                              <label className="text-sm font-semibold text-slate-700">
+                                Discount reason
+                                <input
+                                  value={collectDraft.discountReason || ''}
+                                  onChange={(e) => updateCollectDraft(order.id, 'discountReason', e.target.value)}
+                                  disabled={!collectPreview.hasAgreed}
+                                  className="mt-2 w-full border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-navy disabled:cursor-not-allowed disabled:bg-slate-100"
+                                  placeholder="e.g. Bulk order, loyal customer"
+                                />
+                              </label>
+                            </div>
+
+                            {collectPreview.hasAgreed ? (
+                              collectPreview.invalid ? (
+                                <p className="mt-3 border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                                  The discounted price must be between {formatCurrency(collectPreview.alreadyPaid)} (already
+                                  paid) and {formatCurrency(collectPreview.total)} (job total).
+                                </p>
+                              ) : (
+                                <p className="mt-3 border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+                                  Discount <span className="font-bold">{formatCurrency(collectPreview.discount)}</span>. Customer
+                                  pays <span className="font-bold">{formatCurrency(collectPreview.leftToPay)}</span> to close this
+                                  job.
+                                </p>
+                              )
+                            ) : null}
+
+                            <div className="mt-4 flex flex-col items-stretch gap-2 sm:flex-row sm:justify-end">
+                              <button
+                                type="button"
+                                onClick={() => updateCollectDraft(order.id, 'amount', String(collectPreview.leftToPay))}
+                                disabled={collectPreview.invalid}
+                                className="border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-navy hover:text-navy disabled:opacity-50"
+                              >
+                                Use full balance {formatCurrency(collectPreview.leftToPay)}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleCollectPayment(order)}
+                                disabled={collectingOrderId === order.id}
+                                className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+                              >
+                                {collectingOrderId === order.id ? 'Recording...' : 'Record Payment'}
+                              </button>
+                            </div>
+                          </div>
+                        )
+                      })()
+                    ) : null}
+
+                    {isOwner ? (
+                      <div className="mt-4 border border-slate-200 bg-slate-50 px-4 py-4">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                          <div>
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+                              Queue Management
+                            </p>
+                            <h4 className="mt-1 text-base font-extrabold text-slate-900">
+                              Update quantity, pricing, payment, and deadline
+                            </h4>
+                          </div>
                         </div>
-                        {!isOwner ? (
-                          <span className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
-                            Owner/admin can edit pricing and payment
-                          </span>
-                        ) : null}
+
+                        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                          <label className="text-sm font-semibold text-slate-700">
+                            Quantity
+                            <input
+                              type="number"
+                              min="1"
+                              value={queueDraft.quantity}
+                              onChange={(e) => updateQueueEdit(order.id, 'quantity', e.target.value)}
+                              className="mt-2 w-full border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-navy disabled:cursor-not-allowed disabled:bg-slate-100"
+                            />
+                          </label>
+
+                          <label className="text-sm font-semibold text-slate-700">
+                            Unit price
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={queueDraft.unitPrice}
+                              onChange={(e) => updateQueueEdit(order.id, 'unitPrice', e.target.value)}
+                              className="mt-2 w-full border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-navy disabled:cursor-not-allowed disabled:bg-slate-100"
+                            />
+                          </label>
+
+                          <label className="text-sm font-semibold text-slate-700">
+                            Amount paid (correction)
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={queueDraft.amountPaid}
+                              onChange={(e) => updateQueueEdit(order.id, 'amountPaid', e.target.value)}
+                              className="mt-2 w-full border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-navy disabled:cursor-not-allowed disabled:bg-slate-100"
+                            />
+                          </label>
+
+                          <label className="text-sm font-semibold text-slate-700">
+                            Deadline
+                            <input
+                              type="datetime-local"
+                              value={queueDraft.deadline}
+                              onChange={(e) => updateQueueEdit(order.id, 'deadline', e.target.value)}
+                              className="mt-2 w-full border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-navy"
+                            />
+                          </label>
+                        </div>
+
+                        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                          <MiniValueCard label="Edited Total" value={formatCurrency(draftTotal)} />
+                          <MiniValueCard label="Edited Balance" value={formatCurrency(draftBalance)} />
+                        </div>
+
+                        <div className="mt-4 flex flex-col items-stretch gap-3 border-t border-slate-200 pt-4 sm:flex-row sm:items-center sm:justify-between">
+                          <p className="text-sm text-slate-600">
+                            Project details stay visible here while you adjust quantity, payment, and due date.
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => handleSaveQueueDetails(order)}
+                            disabled={savingOrderId === order.id}
+                            className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+                          >
+                            {savingOrderId === order.id ? 'Saving...' : 'Save Queue Details'}
+                          </button>
+                        </div>
                       </div>
-
-                      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                        <label className="text-sm font-semibold text-slate-700">
-                          Quantity
-                          <input
-                            type="number"
-                            min="1"
-                            value={queueDraft.quantity}
-                            onChange={(e) => updateQueueEdit(order.id, 'quantity', e.target.value)}
-                            disabled={!isOwner}
-                            className="mt-2 w-full border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-navy disabled:cursor-not-allowed disabled:bg-slate-100"
-                          />
-                        </label>
-
-                        <label className="text-sm font-semibold text-slate-700">
-                          Unit price
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={queueDraft.unitPrice}
-                            onChange={(e) => updateQueueEdit(order.id, 'unitPrice', e.target.value)}
-                            disabled={!isOwner}
-                            className="mt-2 w-full border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-navy disabled:cursor-not-allowed disabled:bg-slate-100"
-                          />
-                        </label>
-
-                        <label className="text-sm font-semibold text-slate-700">
-                          Amount paid now
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={queueDraft.amountPaid}
-                            onChange={(e) => updateQueueEdit(order.id, 'amountPaid', e.target.value)}
-                            disabled={!isOwner}
-                            className="mt-2 w-full border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-navy disabled:cursor-not-allowed disabled:bg-slate-100"
-                          />
-                        </label>
-
-                        <label className="text-sm font-semibold text-slate-700">
-                          Deadline
-                          <input
-                            type="datetime-local"
-                            value={queueDraft.deadline}
-                            onChange={(e) => updateQueueEdit(order.id, 'deadline', e.target.value)}
-                            className="mt-2 w-full border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-navy"
-                          />
-                        </label>
+                    ) : (
+                      <div className="mt-4 border border-slate-200 bg-slate-50 px-4 py-4">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                          <label className="flex-1 text-sm font-semibold text-slate-700">
+                            Deadline
+                            <input
+                              type="datetime-local"
+                              value={queueDraft.deadline}
+                              onChange={(e) => updateQueueEdit(order.id, 'deadline', e.target.value)}
+                              className="mt-2 w-full border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-navy"
+                            />
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => handleSaveQueueDetails(order)}
+                            disabled={savingOrderId === order.id}
+                            className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+                          >
+                            {savingOrderId === order.id ? 'Saving...' : 'Save Deadline'}
+                          </button>
+                        </div>
                       </div>
-
-                      <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                        <MiniValueCard label="Edited Total" value={formatCurrency(draftTotal)} />
-                        <MiniValueCard label="Edited Balance" value={formatCurrency(draftBalance)} />
-                      </div>
-
-                      <div className="mt-4 flex flex-col items-stretch gap-3 border-t border-slate-200 pt-4 sm:flex-row sm:items-center sm:justify-between">
-                        <p className="text-sm text-slate-600">
-                          Project details stay visible here while you adjust quantity, payment, and due date.
-                        </p>
-                        <button
-                          type="button"
-                          onClick={() => handleSaveQueueDetails(order)}
-                          disabled={savingOrderId === order.id}
-                          className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
-                        >
-                          {savingOrderId === order.id ? 'Saving...' : 'Save Queue Details'}
-                        </button>
-                      </div>
-                    </div>
+                    )}
 
                     {order.attachments?.length ? (
                       <div className="mt-4 border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700">
@@ -1269,7 +1515,9 @@ function TeamOrdersDashboard() {
                   })
                 ) : (
                   <div className="border border-dashed border-slate-300 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">
-                    No queue jobs match your current search or filter.
+                    {orders.length
+                      ? 'No jobs today match your current search or filter.'
+                      : 'No jobs yet today. Earlier jobs are in Records.'}
                   </div>
                 )}
                 </div>

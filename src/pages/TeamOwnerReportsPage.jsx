@@ -94,10 +94,6 @@ function TeamOwnerReportsPage() {
     loadOwnerData(reportDate)
   }, [loadOwnerData, reportDate])
 
-  const selectedDateJobs = useMemo(() => {
-    return jobs.filter((job) => getWATDateKey(job.created_at) === reportDate)
-  }, [jobs, reportDate])
-
   const selectedDateCompletedJobs = useMemo(() => {
     return jobs.filter(
       (job) =>

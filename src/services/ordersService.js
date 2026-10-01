@@ -27,6 +27,9 @@ function normalizeOrder(item) {
     paymentStatus: item?.payment_status || 'unpaid',
     totalAmount: Number(item?.total_amount ?? item?.total ?? 0),
     amountPaid: Number(item?.amount_paid || 0),
+    discountAmount: Number(item?.discount_amount || 0),
+    discountReason: item?.discount_reason || '',
+    amountDue: Number(item?.amount_due ?? item?.total_amount ?? item?.total ?? 0),
     balanceDue: Number(item?.balance_due || 0),
     deadline: item?.deadline || null,
     hasBeenMessaged: Boolean(item?.has_been_messaged),
@@ -41,6 +44,20 @@ export async function getOrdersData() {
 
   const orders = await fetchAllPages(`${DJANGO_API_BASE}/jobs/`)
   return { orders: orders.map(normalizeOrder), source: 'django' }
+}
+
+export async function getJobsForDate(date) {
+  if (!USE_DJANGO_API) {
+    return { orders: [], source: 'disabled' }
+  }
+
+  const orders = await fetchAllPages(`${DJANGO_API_BASE}/jobs/?created_on=${encodeURIComponent(date)}`)
+  return { orders: orders.map(normalizeOrder), source: 'django' }
+}
+
+export async function getJob(jobId) {
+  const job = await fetchJson(`${DJANGO_API_BASE}/jobs/${jobId}/`)
+  return normalizeOrder(job)
 }
 
 export async function getJobsQueueData() {
@@ -102,23 +119,5 @@ export async function ensureWalkInCustomer() {
       customer_type: 'walk_in',
       notes: 'Generic walk-in customer record for quick counter jobs.',
     }),
-  })
-}
-
-export async function createManualOrder({ customerName, phone, totalAmount, notes }) {
-  const normalizedAmount = Number(totalAmount || 0)
-  const walkInCustomer = await ensureWalkInCustomer()
-
-  const description = [customerName, phone, notes].filter(Boolean).join(' | ')
-
-  return createJob({
-    customer: walkInCustomer.id,
-    job_type: 'walk_in',
-    description,
-    status: 'pending',
-    quantity: 1,
-    unit_price: String(normalizedAmount),
-    amount_paid: String(normalizedAmount),
-    special_instructions: notes || '',
   })
 }

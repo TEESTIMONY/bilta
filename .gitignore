@@ -30,3 +30,8 @@ manage.py
 requirements.txt
 Procfile
 db.sqlite3
+
+# Local environment files (may contain secrets)
+.env
+.env.*
+!.env.example
