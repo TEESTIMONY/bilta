@@ -2,12 +2,12 @@ import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'rea
 import { ChevronDown, Search } from 'lucide-react'
 import { Link, useSearchParams } from 'react-router-dom'
 import Footer from '../components/Footer'
+import JobOrderForm from '../components/JobOrderForm'
 import TeamNavbar from '../components/TeamNavbar'
 import { useAuth } from '../context/authContext'
-import { createCustomer, getCustomersData } from '../services/customersService'
+import { getCustomersData } from '../services/customersService'
 import { createPaymentRecord } from '../services/operationsService'
 import {
-  createJob,
   getDailySummary,
   getJob,
   getJobsQueueData,
@@ -22,32 +22,6 @@ const orderStatusOptions = [
   'completed',
   'cancelled',
 ]
-
-const jobTypeOptions = [
-  'printing',
-  'photocopy',
-  'binding',
-  'lamination',
-  'design',
-  'large_format',
-  'scanning',
-  'branding',
-]
-
-const defaultForm = {
-  customerName: '',
-  phone: '',
-  businessName: '',
-  customerType: 'recurring',
-  jobType: 'printing',
-  description: '',
-  quantity: '1',
-  unitPrice: '',
-  amountPaid: '',
-  deadline: '',
-  specialInstructions: '',
-  projectScopeNote: '',
-}
 
 const queueViewOptions = [
   { value: 'needs_attention', label: 'Needs Attention' },
@@ -111,6 +85,7 @@ function formatFileSize(value) {
 }
 
 function titleCase(value) {
+  if (value === 'walk_in') return 'Walk-in'
   return String(value || '')
     .split('_')
     .filter(Boolean)
@@ -186,14 +161,9 @@ function TeamOrdersDashboard() {
   const [customers, setCustomers] = useState([])
   const [dailySummary, setDailySummary] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [submitting, setSubmitting] = useState(false)
   const [savingOrderId, setSavingOrderId] = useState(null)
   const [statusMessage, setStatusMessage] = useState('')
-  const [customerMode, setCustomerMode] = useState('walk_in')
-  const [customerSearch, setCustomerSearch] = useState('')
-  const [selectedCustomerId, setSelectedCustomerId] = useState('')
   const [summaryDate, setSummaryDate] = useState(getTodayDateValue())
-  const [form, setForm] = useState(defaultForm)
   const [queueEdits, setQueueEdits] = useState({})
   const [expandedOrderId, setExpandedOrderId] = useState(null)
   const [queueSearch, setQueueSearch] = useState('')
@@ -205,7 +175,6 @@ function TeamOrdersDashboard() {
   const [collectDrafts, setCollectDrafts] = useState({})
   const [collectingOrderId, setCollectingOrderId] = useState(null)
   const [missingJobIds, setMissingJobIds] = useState([])
-  const deferredCustomerSearch = useDeferredValue(customerSearch)
   const deferredQueueSearch = useDeferredValue(queueSearch)
 
   const loadDashboard = useCallback(async (date = summaryDate) => {
@@ -317,23 +286,15 @@ function TeamOrdersDashboard() {
     setVisibleQueueCount(6)
   }, [deferredQueueSearch, queueView])
 
-  const filteredCustomers = useMemo(() => {
-    const query = deferredCustomerSearch.trim().toLowerCase()
-    const sorted = [...customers].sort((a, b) => {
-      const aTime = a?.last_job_date ? new Date(a.last_job_date).getTime() : 0
-      const bTime = b?.last_job_date ? new Date(b.last_job_date).getTime() : 0
-      return bTime - aTime
-    })
-
-    if (!query) return sorted.slice(0, 8)
-
-    return sorted.filter((item) => {
-      const fullName = String(item.full_name || '').toLowerCase()
-      const phone = String(item.phone || '').toLowerCase()
-      const business = String(item.business_name || '').toLowerCase()
-      return fullName.includes(query) || phone.includes(query) || business.includes(query)
-    })
-  }, [customers, deferredCustomerSearch])
+  const recentCustomers = useMemo(() => {
+    return [...customers]
+      .sort((a, b) => {
+        const aTime = a?.last_job_date ? new Date(a.last_job_date).getTime() : 0
+        const bTime = b?.last_job_date ? new Date(b.last_job_date).getTime() : 0
+        return bTime - aTime
+      })
+      .slice(0, 8)
+  }, [customers])
 
   const customerSegments = useMemo(() => {
     const recurring = customers.filter((item) => item.customer_type === 'recurring').length
@@ -438,13 +399,6 @@ function TeamOrdersDashboard() {
       .sort(compareDeskOrders)
   }, [orders])
 
-  const totalAmount = useMemo(() => {
-    const quantity = Math.max(1, Number(form.quantity || 1))
-    const unitPrice = Number(form.unitPrice || 0)
-    return quantity * unitPrice
-  }, [form.quantity, form.unitPrice])
-
-  const balanceDue = Math.max(0, totalAmount - Number(form.amountPaid || 0))
 
   async function refreshAfterJobChange(message) {
     await loadDashboard(summaryDate)
@@ -500,8 +454,10 @@ function TeamOrdersDashboard() {
       }
 
       if (isOwner) {
-        payload.quantity = nextQuantity
-        payload.unit_price = String(nextUnitPrice)
+        if (!order.items?.length) {
+          payload.quantity = nextQuantity
+          payload.unit_price = String(nextUnitPrice)
+        }
         payload.amount_paid = String(nextAmountPaid)
       }
 
@@ -590,83 +546,6 @@ function TeamOrdersDashboard() {
     }
   }
 
-  async function resolveCustomerId() {
-    if (customerMode === 'existing') {
-      if (!selectedCustomerId) {
-        throw new Error('Select an existing customer before saving the job.')
-      }
-      return Number(selectedCustomerId)
-    }
-
-    if (customerMode === 'walk_in') {
-      const walkInCustomer = await createCustomer({
-        full_name: 'Walk-in Customer',
-        phone: '',
-        business_name: '',
-        customer_type: 'walk_in',
-      })
-
-      return walkInCustomer.id
-    }
-
-    if (!form.customerName.trim()) {
-      throw new Error('Customer name is required before saving this job.')
-    }
-
-    const createdCustomer = await createCustomer({
-      full_name: form.customerName.trim(),
-      phone: form.phone.trim(),
-      business_name: form.businessName.trim(),
-      customer_type: customerMode === 'walk_in' ? 'walk_in' : form.customerType,
-    })
-
-    return createdCustomer.id
-  }
-
-  async function handleCreateJob(e) {
-    e.preventDefault()
-
-    if (!form.description.trim()) {
-      setStatusMessage('Add a short job description before saving.')
-      return
-    }
-
-    if (!form.unitPrice || Number(form.unitPrice) <= 0) {
-      setStatusMessage('Unit price must be greater than zero.')
-      return
-    }
-
-    setSubmitting(true)
-    try {
-      const customerId = await resolveCustomerId()
-      await createJob({
-        customer: customerId,
-        job_type: form.jobType,
-        description: form.description.trim(),
-        quantity: Math.max(1, Number(form.quantity || 1)),
-        unit_price: String(Number(form.unitPrice || 0)),
-        amount_paid: String(Number(form.amountPaid || 0)),
-        deadline: form.deadline ? new Date(form.deadline).toISOString() : null,
-        special_instructions: form.specialInstructions.trim(),
-        project_scope_note: form.projectScopeNote.trim(),
-        status: 'pending',
-      })
-
-      setForm((current) => ({
-        ...defaultForm,
-        jobType: current.jobType,
-      }))
-      setCustomerSearch('')
-      setSelectedCustomerId('')
-      setCustomerMode('walk_in')
-      await refreshAfterJobChange('New job order created successfully.')
-    } catch (error) {
-      setStatusMessage(error.message || 'Could not create job order.')
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
   return (
     <>
       <TeamNavbar />
@@ -708,242 +587,12 @@ function TeamOrdersDashboard() {
 
           <div className="flex flex-col gap-8">
             <div className="order-2 grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-            <section className="border border-slate-200 bg-white p-5 shadow-sm md:p-6">
-              <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                    New Job
-                  </p>
-                  <h2 className="mt-1 text-2xl font-extrabold text-navy">Add Job</h2>
-                </div>
-                <div className="grid w-full gap-2 sm:flex sm:w-auto sm:flex-wrap">
-                  {[
-                    { value: 'walk_in', label: 'Walk-in' },
-                    { value: 'existing', label: 'Existing Customer' },
-                    { value: 'new', label: 'New Customer' },
-                  ].map((option) => (
-                    <button
-                      key={option.value}
-                      type="button"
-                      onClick={() => setCustomerMode(option.value)}
-                      className={`w-full border px-3 py-2 text-sm font-semibold transition sm:w-auto sm:py-1.5 ${
-                        customerMode === option.value
-                          ? 'border-navy bg-navy text-white'
-                          : 'border-slate-300 bg-white text-slate-700 hover:border-navy hover:text-navy'
-                      }`}
-                    >
-                      {option.label}
-                    </button>
-                  ))}
-                </div>
+            <section id="new-job" className="border border-slate-200 bg-white p-5 shadow-sm md:p-6">
+              <h2 className="text-2xl font-extrabold text-navy">New job</h2>
+              <p className="mt-1 text-sm text-slate-600">Fill it in like the paper job order form.</p>
+              <div className="mt-5">
+                <JobOrderForm customers={customers} onCreated={refreshAfterJobChange} onError={setStatusMessage} />
               </div>
-
-              <form onSubmit={handleCreateJob} className="mt-6 space-y-5">
-                {customerMode === 'existing' ? (
-                  <div className="space-y-3 border border-slate-200 bg-slate-50 p-4">
-                    <label className="block text-sm font-semibold text-slate-700">
-                      Search customers
-                      <input
-                        value={customerSearch}
-                        onChange={(e) => setCustomerSearch(e.target.value)}
-                        className="mt-2 w-full border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-navy"
-                        placeholder="Search by name, phone, or business"
-                      />
-                    </label>
-
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      {filteredCustomers.length ? (
-                        filteredCustomers.map((customer) => (
-                          <button
-                            key={customer.id}
-                            type="button"
-                            onClick={() => setSelectedCustomerId(String(customer.id))}
-                            className={`border p-3 text-left transition ${
-                              String(customer.id) === selectedCustomerId
-                                ? 'border-navy bg-navy text-white'
-                                : 'border-slate-200 bg-white hover:border-navy'
-                            }`}
-                          >
-                            <p className="font-bold">{customer.full_name}</p>
-                            <p className={`mt-1 text-xs ${String(customer.id) === selectedCustomerId ? 'text-slate-200' : 'text-slate-500'}`}>
-                              {customer.phone || customer.business_name || 'No extra contact info'}
-                            </p>
-                          </button>
-                        ))
-                      ) : (
-                        <div className="border border-dashed border-slate-300 bg-white px-3 py-4 text-sm text-slate-500 sm:col-span-2">
-                          No matching customers found.
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ) : null}
-
-                {customerMode === 'new' ? (
-                  <div className="grid gap-3 border border-slate-200 bg-slate-50 p-4 md:grid-cols-2">
-                    <label className="block text-sm font-semibold text-slate-700">
-                      Customer name
-                      <input
-                        value={form.customerName}
-                        onChange={(e) => setForm((current) => ({ ...current, customerName: e.target.value }))}
-                        className="mt-2 w-full border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-navy"
-                        placeholder="Customer full name"
-                      />
-                    </label>
-
-                    <label className="block text-sm font-semibold text-slate-700">
-                      Phone number
-                      <input
-                        value={form.phone}
-                        onChange={(e) => setForm((current) => ({ ...current, phone: e.target.value }))}
-                        className="mt-2 w-full border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-navy"
-                        placeholder="080..."
-                      />
-                    </label>
-
-                    <label className="block text-sm font-semibold text-slate-700">
-                      Business name
-                      <input
-                        value={form.businessName}
-                        onChange={(e) => setForm((current) => ({ ...current, businessName: e.target.value }))}
-                        className="mt-2 w-full border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-navy"
-                        placeholder="Optional"
-                      />
-                    </label>
-
-                    {customerMode === 'new' ? (
-                      <label className="block text-sm font-semibold text-slate-700">
-                        Customer segment
-                        <select
-                          value={form.customerType}
-                          onChange={(e) => setForm((current) => ({ ...current, customerType: e.target.value }))}
-                          className="mt-2 w-full border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-navy"
-                        >
-                          <option value="recurring">Recurring</option>
-                          <option value="premium">Premium / Project</option>
-                        </select>
-                      </label>
-                    ) : null}
-                  </div>
-                ) : null}
-
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                  <label className="block text-sm font-semibold text-slate-700">
-                    Job type
-                    <select
-                      value={form.jobType}
-                      onChange={(e) => setForm((current) => ({ ...current, jobType: e.target.value }))}
-                      className="mt-2 w-full border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-navy"
-                    >
-                      {jobTypeOptions.map((option) => (
-                        <option key={option} value={option}>
-                          {titleCase(option)}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <label className="block text-sm font-semibold text-slate-700">
-                    Quantity
-                    <input
-                      type="number"
-                      min="1"
-                      value={form.quantity}
-                      onChange={(e) => setForm((current) => ({ ...current, quantity: e.target.value }))}
-                      className="mt-2 w-full border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-navy"
-                    />
-                  </label>
-
-                  <label className="block text-sm font-semibold text-slate-700">
-                    Unit price
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={form.unitPrice}
-                      onChange={(e) => setForm((current) => ({ ...current, unitPrice: e.target.value }))}
-                      className="mt-2 w-full border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-navy"
-                      placeholder="0.00"
-                    />
-                  </label>
-
-                  <label className="block text-sm font-semibold text-slate-700">
-                    Amount paid now
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={form.amountPaid}
-                      onChange={(e) => setForm((current) => ({ ...current, amountPaid: e.target.value }))}
-                      className="mt-2 w-full border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-navy"
-                      placeholder="0.00"
-                    />
-                  </label>
-                </div>
-
-                <label className="block text-sm font-semibold text-slate-700">
-                  Job description
-                  <textarea
-                    value={form.description}
-                    onChange={(e) => setForm((current) => ({ ...current, description: e.target.value }))}
-                    className="mt-2 w-full border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-navy"
-                    rows={3}
-                    placeholder="What exactly is the customer asking for?"
-                  />
-                </label>
-
-                <div className="grid gap-3 md:grid-cols-2">
-                  <label className="block text-sm font-semibold text-slate-700">
-                    Deadline
-                    <input
-                      type="datetime-local"
-                      value={form.deadline}
-                      onChange={(e) => setForm((current) => ({ ...current, deadline: e.target.value }))}
-                      className="mt-2 w-full border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-navy"
-                    />
-                  </label>
-
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <MiniValueCard label="Total" value={formatCurrency(totalAmount)} />
-                    <MiniValueCard label="Balance" value={formatCurrency(balanceDue)} />
-                  </div>
-                </div>
-
-                <label className="block text-sm font-semibold text-slate-700">
-                  Special instructions
-                  <textarea
-                    value={form.specialInstructions}
-                    onChange={(e) => setForm((current) => ({ ...current, specialInstructions: e.target.value }))}
-                    className="mt-2 w-full border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-navy"
-                    rows={3}
-                    placeholder="Customer notes, finishing details, color notes, delivery instructions..."
-                  />
-                </label>
-
-                <label className="block text-sm font-semibold text-slate-700">
-                  Project scope note
-                  <textarea
-                    value={form.projectScopeNote}
-                    onChange={(e) => setForm((current) => ({ ...current, projectScopeNote: e.target.value }))}
-                    className="mt-2 w-full border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-navy"
-                    rows={3}
-                    placeholder="Optional for bigger jobs: context, references, or project scope."
-                  />
-                </label>
-
-                <div className="flex flex-col items-stretch gap-3 border-t border-slate-200 pt-4 sm:flex-row sm:items-center sm:justify-between">
-                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
-                    New jobs open in Pending by default
-                  </p>
-                  <button
-                    type="submit"
-                    disabled={submitting}
-                    className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
-                  >
-                    {submitting ? 'Saving Job...' : 'Create Job Order'}
-                  </button>
-                </div>
-              </form>
             </section>
 
             <section className="space-y-6">
@@ -960,7 +609,7 @@ function TeamOrdersDashboard() {
                 </div>
 
                 <div className="mt-5 space-y-3">
-                  {filteredCustomers.slice(0, 4).map((customer) => (
+                  {recentCustomers.slice(0, 4).map((customer) => (
                     <div key={customer.id} className="border border-slate-200 bg-slate-50 px-4 py-3">
                       <div className="flex items-start justify-between gap-3">
                         <div>
@@ -1077,7 +726,9 @@ function TeamOrdersDashboard() {
                     amountPaid: String(Number(order.amountPaid || 0)),
                     deadline: toDateTimeLocalValue(order.deadline),
                   }
-                  const draftTotal = Math.max(1, Number(queueDraft.quantity || 1)) * Number(queueDraft.unitPrice || 0)
+                  const draftTotal = order.items?.length
+                    ? Number(order.totalAmount || 0)
+                    : Math.max(1, Number(queueDraft.quantity || 1)) * Number(queueDraft.unitPrice || 0)
                   const draftBalance = Math.max(
                     0,
                     draftTotal - Number(order.discountAmount || 0) - Number(queueDraft.amountPaid || 0),
@@ -1145,7 +796,9 @@ function TeamOrdersDashboard() {
                           </p>
                           <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-semibold uppercase tracking-[0.12em]">
                             <span className="border border-slate-200 bg-slate-50 px-2 py-1 text-slate-600">
-                              Qty {order.quantity || 1}
+                              {order.items?.length
+                                ? `${order.items.length} item${order.items.length === 1 ? '' : 's'}`
+                                : `Qty ${order.quantity || 1}`}
                             </span>
                             <span className="border border-slate-200 bg-slate-50 px-2 py-1 text-slate-600">
                               Total {formatCurrency(order.totalAmount)}
@@ -1191,12 +844,64 @@ function TeamOrdersDashboard() {
 
                     {isExpanded ? (
                       <>
-                    <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                      <MiniValueCard label="Quantity" value={order.quantity || 1} />
-                      <MiniValueCard label="Unit Price" value={formatCurrency(order.unitPrice || 0)} />
-                      <MiniValueCard label="Total" value={formatCurrency(order.totalAmount)} />
-                      <MiniValueCard label="Balance" value={formatCurrency(order.balanceDue)} />
-                    </div>
+                    {order.items?.length ? (
+                      <div className="mt-4 border border-slate-200 bg-white">
+                        <table className="w-full text-sm">
+                          <thead className="bg-slate-50 text-left text-xs font-semibold text-slate-500">
+                            <tr>
+                              <th className="px-3 py-2">#</th>
+                              <th className="px-3 py-2">Item</th>
+                              <th className="px-3 py-2 text-right">Qty</th>
+                              <th className="hidden px-3 py-2 text-right sm:table-cell">Rate</th>
+                              <th className="px-3 py-2 text-right">Amount</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {order.items.map((line, index) => (
+                              <tr key={line.id || index} className="border-t border-slate-100">
+                                <td className="px-3 py-2 text-slate-500">{index + 1}</td>
+                                <td className="px-3 py-2 font-semibold text-slate-800">{line.description}</td>
+                                <td className="px-3 py-2 text-right">{line.quantity}</td>
+                                <td className="hidden px-3 py-2 text-right sm:table-cell">{formatCurrency(line.rate)}</td>
+                                <td className="px-3 py-2 text-right font-semibold">{formatCurrency(line.amount)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                          <tfoot className="border-t border-slate-200 text-sm">
+                            <tr>
+                              <td colSpan={5} className="px-3 py-2">
+                                <div className="flex justify-between">
+                                  <span className="text-slate-600">Total</span>
+                                  <span className="font-bold">{formatCurrency(order.totalAmount)}</span>
+                                </div>
+                                {order.discountAmount > 0 ? (
+                                  <div className="flex justify-between text-emerald-700">
+                                    <span>Discount{order.discountReason ? ` (${order.discountReason})` : ''}</span>
+                                    <span className="font-bold">-{formatCurrency(order.discountAmount)}</span>
+                                  </div>
+                                ) : null}
+                                <div className="flex justify-between">
+                                  <span className="text-slate-600">Paid</span>
+                                  <span className="font-bold">{formatCurrency(order.amountPaid)}</span>
+                                </div>
+                                <div className="flex justify-between text-base">
+                                  <span className="font-semibold text-slate-800">Balance</span>
+                                  <span className="font-extrabold text-navy">{formatCurrency(order.balanceDue)}</span>
+                                </div>
+                                <p className="mt-1 text-xs text-slate-500">{titleCase(order.fulfilment)}</p>
+                              </td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    ) : (
+                      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                        <MiniValueCard label="Quantity" value={order.quantity || 1} />
+                        <MiniValueCard label="Unit Price" value={formatCurrency(order.unitPrice || 0)} />
+                        <MiniValueCard label="Total" value={formatCurrency(order.totalAmount)} />
+                        <MiniValueCard label="Balance" value={formatCurrency(order.balanceDue)} />
+                      </div>
+                    )}
 
                     {order.customerPhone || order.customerEmail ? (
                       <div className="mt-4 grid gap-2 sm:grid-cols-2">
@@ -1364,28 +1069,32 @@ function TeamOrdersDashboard() {
                         </div>
 
                         <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                          <label className="text-sm font-semibold text-slate-700">
-                            Quantity
-                            <input
-                              type="number"
-                              min="1"
-                              value={queueDraft.quantity}
-                              onChange={(e) => updateQueueEdit(order.id, 'quantity', e.target.value)}
-                              className="mt-2 w-full border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-navy disabled:cursor-not-allowed disabled:bg-slate-100"
-                            />
-                          </label>
+                        {order.items?.length ? null : (
+                          <>
+                              <label className="text-sm font-semibold text-slate-700">
+                                Quantity
+                                <input
+                                  type="number"
+                                  min="1"
+                                  value={queueDraft.quantity}
+                                  onChange={(e) => updateQueueEdit(order.id, 'quantity', e.target.value)}
+                                  className="mt-2 w-full border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-navy disabled:cursor-not-allowed disabled:bg-slate-100"
+                                />
+                              </label>
 
-                          <label className="text-sm font-semibold text-slate-700">
-                            Unit price
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              value={queueDraft.unitPrice}
-                              onChange={(e) => updateQueueEdit(order.id, 'unitPrice', e.target.value)}
-                              className="mt-2 w-full border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-navy disabled:cursor-not-allowed disabled:bg-slate-100"
-                            />
-                          </label>
+                              <label className="text-sm font-semibold text-slate-700">
+                                Unit price
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  value={queueDraft.unitPrice}
+                                  onChange={(e) => updateQueueEdit(order.id, 'unitPrice', e.target.value)}
+                                  className="mt-2 w-full border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-navy disabled:cursor-not-allowed disabled:bg-slate-100"
+                                />
+                              </label>
+                          </>
+                        )}
 
                           <label className="text-sm font-semibold text-slate-700">
                             Amount paid (correction)

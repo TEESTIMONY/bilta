@@ -70,6 +70,7 @@ function formatDateTime(value) {
 }
 
 function titleCase(value) {
+  if (value === 'walk_in') return 'Walk-in'
   return String(value || '')
     .split('_')
     .filter(Boolean)
@@ -606,6 +607,18 @@ function TeamOperationsPage() {
                         <p className="mt-3 text-sm leading-6 text-slate-600">
                           {job.description || 'No job description added.'}
                         </p>
+                        {job.items?.length ? (
+                          <ul className="mt-2 space-y-0.5 text-sm text-slate-700">
+                            {job.items.map((line, index) => (
+                              <li key={line.id || index} className="flex justify-between gap-3">
+                                <span>
+                                  {line.quantity} × {line.description}
+                                </span>
+                                <span className="font-semibold">{formatCurrency(line.amount)}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : null}
 
                         <div className="mt-3 grid gap-2 sm:grid-cols-3">
                           <div className="border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600">
@@ -704,6 +717,18 @@ function TeamOperationsPage() {
                           <p className="mt-3 text-sm leading-6 text-slate-600">
                             {job.description || 'No job description added.'}
                           </p>
+                          {job.items?.length ? (
+                            <ul className="mt-2 space-y-0.5 text-sm text-slate-700">
+                              {job.items.map((line, index) => (
+                                <li key={line.id || index} className="flex justify-between gap-3">
+                                  <span>
+                                    {line.quantity} × {line.description}
+                                  </span>
+                                  <span className="font-semibold">{formatCurrency(line.amount)}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          ) : null}
 
                           <div className="mt-3 grid gap-2 sm:grid-cols-3">
                             <div className="border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600">
