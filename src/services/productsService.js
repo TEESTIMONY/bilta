@@ -16,8 +16,9 @@ function normalizeImageList(item) {
 function normalizeProductItem(item) {
   const images = normalizeImageList(item)
   const primaryImage = images[0] || String(item?.image || '').trim()
-  const sizeOptions = Array.isArray(item?.sizeOptions ?? item?.size_options)
-    ? [...new Set((item?.sizeOptions ?? item?.size_options).map((entry) => String(entry || '').trim()).filter(Boolean))]
+  const rawSizeOptions = item?.sizeOptions ?? item?.size_options
+  const sizeOptions = Array.isArray(rawSizeOptions)
+    ? [...new Set(rawSizeOptions.map((entry) => String(entry || '').trim()).filter(Boolean))]
     : []
 
   return {

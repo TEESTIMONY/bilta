@@ -28,6 +28,13 @@ function ProductDetails() {
   const [selectedImage, setSelectedImage] = useState('')
   const initialDraft = useMemo(() => getOrderDraft(slug), [slug])
   const [quantity, setQuantity] = useState(Math.max(1, Number(initialDraft.quantity || 1)))
+  const [quantitySlug, setQuantitySlug] = useState(slug)
+
+  // Navigating to another product reuses this component, so reset quantity to that product's draft.
+  if (quantitySlug !== slug) {
+    setQuantitySlug(slug)
+    setQuantity(Math.max(1, Number(initialDraft.quantity || 1)))
+  }
 
   useEffect(() => {
     let isMounted = true
@@ -64,11 +71,6 @@ function ProductDetails() {
 
   const activeImage =
     productImages.includes(selectedImage) ? selectedImage : productImages[0] || product?.image || ''
-
-  useEffect(() => {
-    if (!product) return
-    setQuantity(Math.max(1, Number(initialDraft.quantity || 1)))
-  }, [initialDraft.quantity, product])
 
   function handleContinueOrder() {
     if (!product) return

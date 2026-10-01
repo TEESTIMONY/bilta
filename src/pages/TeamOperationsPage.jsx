@@ -3,7 +3,12 @@ import { useNavigate } from 'react-router-dom'
 import Footer from '../components/Footer'
 import TeamNavbar from '../components/TeamNavbar'
 import { useAuth } from '../context/authContext'
-import { getDailySummary, getOrdersData } from '../services/ordersService'
+import {
+  getDailySummary,
+  getJobsForDate,
+  getOrdersData,
+  updateOrderQuickFields,
+} from '../services/ordersService'
 import {
   createPaymentRecord,
   createPhotocopySession,
@@ -12,6 +17,15 @@ import {
   getSystemSetting,
   updateSystemSetting,
 } from '../services/operationsService'
+
+const jobStatusOptions = [
+  'pending',
+  'in_progress',
+  'ready_for_pickup',
+  'awaiting_delivery',
+  'completed',
+  'cancelled',
+]
 
 const defaultPhotocopyForm = {
   openingReading: '',
@@ -80,6 +94,8 @@ function TeamOperationsPage() {
   const [payments, setPayments] = useState([])
   const [sessions, setSessions] = useState([])
   const [jobs, setJobs] = useState([])
+  const [dayJobs, setDayJobs] = useState([])
+  const [savingJobId, setSavingJobId] = useState(null)
   const [setting, setSetting] = useState(null)
   const [priceInput, setPriceInput] = useState('')
   const [photocopyForm, setPhotocopyForm] = useState(defaultPhotocopyForm)
@@ -93,12 +109,13 @@ function TeamOperationsPage() {
   const loadOperationsData = useCallback(async (targetDate = summaryDate) => {
     setLoading(true)
     try {
-      const [summaryData, paymentData, sessionData, settingData, orderData] = await Promise.all([
+      const [summaryData, paymentData, sessionData, settingData, orderData, dayJobData] = await Promise.all([
         getDailySummary(targetDate),
         getPaymentRecordsData(),
         getPhotocopySessionsData(),
         getSystemSetting(),
         getOrdersData(),
+        getJobsForDate(targetDate),
       ])
 
       setDailySummary(summaryData.summary)
@@ -106,6 +123,7 @@ function TeamOperationsPage() {
       setSessions(sessionData.sessions)
       setSetting(settingData.setting)
       setJobs(orderData.orders)
+      setDayJobs(dayJobData.orders)
       setPriceInput(settingData.setting ? String(settingData.setting.photocopyPricePerCopy || '') : '')
     } catch (error) {
       setStatusMessage(`Failed to load daily records: ${error.message}`)
@@ -186,6 +204,27 @@ function TeamOperationsPage() {
       },
     )
   }, [selectedDateCompletedJobs])
+
+  const dayJobsSummary = useMemo(() => {
+    const open = dayJobs.filter((job) => job.status !== 'completed' && job.status !== 'cancelled').length
+    const outstanding = dayJobs
+      .filter((job) => job.status !== 'cancelled')
+      .reduce((sum, job) => sum + Number(job.balanceDue || 0), 0)
+    return { open, outstanding }
+  }, [dayJobs])
+
+  async function handleJobStatusChange(jobId, status) {
+    setSavingJobId(jobId)
+    try {
+      await updateOrderQuickFields(jobId, { status })
+      await loadOperationsData(summaryDate)
+      setStatusMessage(`Job #${jobId} updated.`)
+    } catch (error) {
+      setStatusMessage(`Could not update job #${jobId}: ${error.message}`)
+    } finally {
+      setSavingJobId(null)
+    }
+  }
 
   const payableJobs = useMemo(() => {
     return jobs.filter((item) => item.status !== 'cancelled' && item.paymentStatus !== 'paid')
@@ -548,6 +587,120 @@ function TeamOperationsPage() {
                   ) : (
                     <div className="border border-dashed border-slate-300 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">
                       No completed jobs recorded for this date yet.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="border border-slate-200 bg-white p-5 shadow-sm md:p-6">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                      Job Records
+                    </p>
+                    <h2 className="mt-1 text-2xl font-extrabold text-navy">Jobs Created</h2>
+                  </div>
+                  <div className="border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-600">
+                    {summaryDate}
+                  </div>
+                </div>
+
+                <p className="mt-2 text-sm leading-6 text-slate-600">
+                  Every job added on this date. Jobs leave the desk at the end of their day, so follow
+                  up on unfinished or unpaid ones here.
+                </p>
+
+                {dayJobs.length ? (
+                  <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                    <ValueCard label="Jobs Created" value={dayJobs.length} />
+                    <ValueCard
+                      label="Still Open"
+                      value={dayJobsSummary.open}
+                      tone={dayJobsSummary.open > 0 ? 'alert' : 'normal'}
+                    />
+                    <ValueCard
+                      label="Balance Owed"
+                      value={formatCurrency(dayJobsSummary.outstanding)}
+                      tone={dayJobsSummary.outstanding > 0 ? 'alert' : 'normal'}
+                    />
+                  </div>
+                ) : null}
+
+                <div className="mt-5 space-y-3">
+                  {dayJobs.length ? (
+                    dayJobs.map((job) => {
+                      const balance = Number(job.balanceDue || 0)
+                      const needsFollowUp =
+                        job.status !== 'cancelled' && (job.status !== 'completed' || balance > 0)
+                      return (
+                        <article
+                          key={job.id}
+                          className={`border px-4 py-3 ${
+                            needsFollowUp ? 'border-amber-300 bg-amber-50' : 'border-slate-200 bg-slate-50'
+                          }`}
+                        >
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                              <p className="font-bold text-slate-900">
+                                Job #{job.id} - {job.customerName || 'Walk-in'}
+                              </p>
+                              <p className="mt-1 text-sm text-slate-500">
+                                {titleCase(job.jobType)} - Added {formatDateTime(job.created_at)}
+                                {job.createdByName ? ` by ${job.createdByName}` : ''}
+                              </p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-base font-extrabold text-navy">{formatCurrency(job.totalAmount)}</p>
+                              <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+                                {titleCase(job.paymentStatus)}
+                              </p>
+                            </div>
+                          </div>
+
+                          <p className="mt-3 text-sm leading-6 text-slate-600">
+                            {job.description || 'No job description added.'}
+                          </p>
+
+                          <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                            <div className="border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600">
+                              Paid: <span className="font-bold text-slate-900">{formatCurrency(job.amountPaid)}</span>
+                            </div>
+                            <div className="border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600">
+                              Balance: <span className="font-bold text-slate-900">{formatCurrency(balance)}</span>
+                            </div>
+                            <div className="border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600">
+                              Qty: <span className="font-bold text-slate-900">{job.quantity || 1}</span>
+                            </div>
+                          </div>
+
+                          <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+                            <select
+                              value={job.status}
+                              disabled={savingJobId === job.id}
+                              onChange={(e) => handleJobStatusChange(job.id, e.target.value)}
+                              aria-label={`Status for job #${job.id}`}
+                              className="w-full border border-slate-300 bg-white px-3 py-2 text-sm font-semibold outline-none transition focus:border-navy disabled:opacity-60 sm:w-auto"
+                            >
+                              {jobStatusOptions.map((status) => (
+                                <option key={status} value={status}>
+                                  {titleCase(status)}
+                                </option>
+                              ))}
+                            </select>
+                            <button
+                              type="button"
+                              onClick={() => navigate(`/team/orders?focusJobId=${encodeURIComponent(job.id)}`)}
+                              className="border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-navy hover:text-navy"
+                            >
+                              Open full details
+                            </button>
+                          </div>
+                        </article>
+                      )
+                    })
+                  ) : (
+                    <div className="border border-dashed border-slate-300 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">
+                      {loading ? 'Loading jobs...' : 'No jobs were added on this date.'}
                     </div>
                   )}
                 </div>

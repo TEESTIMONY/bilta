@@ -1,6 +1,6 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react'
 import { ChevronDown, Search } from 'lucide-react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import Footer from '../components/Footer'
 import TeamNavbar from '../components/TeamNavbar'
 import { useAuth } from '../context/authContext'
@@ -8,6 +8,7 @@ import { createCustomer, getCustomersData } from '../services/customersService'
 import {
   createJob,
   getDailySummary,
+  getJob,
   getJobsQueueData,
   updateOrderQuickFields,
 } from '../services/ordersService'
@@ -116,6 +117,17 @@ function titleCase(value) {
     .join(' ')
 }
 
+function getWATDateKey(value) {
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return ''
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Africa/Lagos',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(parsed)
+}
+
 function isCompletedJob(order) {
   return order?.status === 'completed'
 }
@@ -186,19 +198,30 @@ function TeamOrdersDashboard() {
   const [queueSearch, setQueueSearch] = useState('')
   const [queueView, setQueueView] = useState('needs_attention')
   const [visibleQueueCount, setVisibleQueueCount] = useState(6)
+  // Jobs from earlier days opened through a ?focusJobId= link (Records / Reports);
+  // the queue itself only holds today's jobs.
+  const [linkedJobIds, setLinkedJobIds] = useState([])
+  const [missingJobIds, setMissingJobIds] = useState([])
   const deferredCustomerSearch = useDeferredValue(customerSearch)
   const deferredQueueSearch = useDeferredValue(queueSearch)
 
   const loadDashboard = useCallback(async (date = summaryDate) => {
     setLoading(true)
     try {
-      const [queueData, customerData, summaryData] = await Promise.all([
+      const [queueData, customerData, summaryData, linkedJobResults] = await Promise.all([
         getJobsQueueData(),
         getCustomersData(),
         getDailySummary(date),
+        Promise.allSettled(linkedJobIds.map((jobId) => getJob(jobId))),
       ])
 
-      setOrders(queueData.orders)
+      const queueIds = new Set(queueData.orders.map((order) => order.id))
+      const linkedJobs = linkedJobResults
+        .filter((result) => result.status === 'fulfilled' && !queueIds.has(result.value.id))
+        .map((result) => result.value)
+      setMissingJobIds(linkedJobIds.filter((_, index) => linkedJobResults[index].status === 'rejected'))
+
+      setOrders([...queueData.orders, ...linkedJobs])
       setCustomers(customerData.customers)
       setDailySummary(summaryData.summary)
     } catch (error) {
@@ -206,10 +229,23 @@ function TeamOrdersDashboard() {
     } finally {
       setLoading(false)
     }
-  }, [summaryDate])
+  }, [linkedJobIds, summaryDate])
 
   useEffect(() => {
     loadDashboard(summaryDate)
+  }, [loadDashboard, summaryDate])
+
+  // The queue only holds today's jobs, so reload once the day rolls over if the desk is left open.
+  useEffect(() => {
+    let currentDay = getWATDateKey(new Date())
+    const timer = window.setInterval(() => {
+      const today = getWATDateKey(new Date())
+      if (today === currentDay) return
+      currentDay = today
+      setLinkedJobIds([])
+      loadDashboard(summaryDate)
+    }, 60 * 1000)
+    return () => window.clearInterval(timer)
   }, [loadDashboard, summaryDate])
 
   useEffect(() => {
@@ -243,7 +279,18 @@ function TeamOrdersDashboard() {
     if (!Number.isFinite(targetId)) return
 
     const targetExists = orders.some((order) => order.id === targetId)
-    if (!targetExists) return
+    if (!targetExists) {
+      if (missingJobIds.includes(targetId)) {
+        setStatusMessage(`Job #${targetId} could not be found.`)
+        const nextParams = new URLSearchParams(searchParams)
+        nextParams.delete('focusJobId')
+        setSearchParams(nextParams, { replace: true })
+      } else if (!linkedJobIds.includes(targetId)) {
+        // Not one of today's jobs: load it alongside the queue.
+        setLinkedJobIds((current) => [...current, targetId])
+      }
+      return
+    }
 
     setQueueView('all')
     setQueueSearch('')
@@ -258,7 +305,7 @@ function TeamOrdersDashboard() {
     const nextParams = new URLSearchParams(searchParams)
     nextParams.delete('focusJobId')
     setSearchParams(nextParams, { replace: true })
-  }, [orders, searchParams, setSearchParams])
+  }, [linkedJobIds, missingJobIds, orders, searchParams, setSearchParams])
 
   useEffect(() => {
     setVisibleQueueCount(6)
@@ -883,10 +930,13 @@ function TeamOrdersDashboard() {
                 <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
                   Job List
                 </p>
-                <h2 className="mt-1 text-2xl font-extrabold text-navy">All Jobs</h2>
+                <h2 className="mt-1 text-2xl font-extrabold text-navy">Today&apos;s Jobs</h2>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-                  Active jobs show first. Completed jobs also stay here, so you can still check job
-                  details and payment after the work is done.
+                  Active jobs show first. At the end of each day, jobs move to{' '}
+                  <Link to="/team/records" className="font-semibold text-navy underline underline-offset-2">
+                    Records
+                  </Link>
+                  , where you can still check details, update status, and log payments.
                 </p>
               </div>
               {loading ? (
@@ -963,6 +1013,8 @@ function TeamOrdersDashboard() {
                   const isExpanded = expandedOrderId === order.id
                   const hasPaymentIssue = isCompletedWithPaymentIssue(order)
                   const isCompleted = isCompletedJob(order)
+                  const createdDay = getWATDateKey(order.created_at)
+                  const isFromEarlierDay = Boolean(createdDay) && createdDay !== getWATDateKey(new Date())
 
                     return (
                       <article
@@ -1002,6 +1054,11 @@ function TeamOrdersDashboard() {
                             {hasPaymentIssue ? (
                               <span className="border border-amber-300 bg-amber-100 px-2 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-amber-800">
                                 Payment Review
+                              </span>
+                            ) : null}
+                            {isFromEarlierDay ? (
+                              <span className="border border-slate-300 bg-white px-2 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-600">
+                                From {createdDay}
                               </span>
                             ) : null}
                           </div>
@@ -1269,7 +1326,9 @@ function TeamOrdersDashboard() {
                   })
                 ) : (
                   <div className="border border-dashed border-slate-300 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">
-                    No queue jobs match your current search or filter.
+                    {orders.length
+                      ? 'No jobs today match your current search or filter.'
+                      : 'No jobs yet today. Earlier jobs are in Records.'}
                   </div>
                 )}
                 </div>

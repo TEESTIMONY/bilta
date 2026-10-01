@@ -43,6 +43,20 @@ export async function getOrdersData() {
   return { orders: orders.map(normalizeOrder), source: 'django' }
 }
 
+export async function getJobsForDate(date) {
+  if (!USE_DJANGO_API) {
+    return { orders: [], source: 'disabled' }
+  }
+
+  const orders = await fetchAllPages(`${DJANGO_API_BASE}/jobs/?created_on=${encodeURIComponent(date)}`)
+  return { orders: orders.map(normalizeOrder), source: 'django' }
+}
+
+export async function getJob(jobId) {
+  const job = await fetchJson(`${DJANGO_API_BASE}/jobs/${jobId}/`)
+  return normalizeOrder(job)
+}
+
 export async function getJobsQueueData() {
   if (!USE_DJANGO_API) {
     return { orders: [], source: 'disabled' }
