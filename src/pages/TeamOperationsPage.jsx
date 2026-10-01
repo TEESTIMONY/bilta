@@ -39,6 +39,8 @@ const defaultPaymentForm = {
   jobId: '',
   serviceLabel: '',
   note: '',
+  agreedTotal: '',
+  discountReason: '',
 }
 
 function getTodayDateValue() {
@@ -192,7 +194,7 @@ function TeamOperationsPage() {
     return selectedDateCompletedJobs.reduce(
       (summary, job) => ({
         count: summary.count + 1,
-        totalValue: summary.totalValue + Number(job.totalAmount || 0),
+        totalValue: summary.totalValue + Number(job.amountDue || 0),
         amountReceived: summary.amountReceived + Number(job.amountPaid || 0),
         outstanding: summary.outstanding + Number(job.balanceDue || 0),
       }),
@@ -288,6 +290,28 @@ function TeamOperationsPage() {
     }
   }
 
+  const selectedPaymentJob = useMemo(
+    () => (paymentForm.mode === 'job' ? jobs.find((job) => String(job.id) === String(paymentForm.jobId)) : null),
+    [jobs, paymentForm.jobId, paymentForm.mode],
+  )
+
+  const discountPreview = useMemo(() => {
+    if (!selectedPaymentJob) return null
+    const total = Number(selectedPaymentJob.totalAmount || 0)
+    const alreadyPaid = Number(selectedPaymentJob.amountPaid || 0)
+    const hasAgreed = paymentForm.agreedTotal !== ''
+    const agreed = hasAgreed ? Number(paymentForm.agreedTotal) : Number(selectedPaymentJob.amountDue || total)
+    return {
+      total,
+      alreadyPaid,
+      hasAgreed,
+      agreed,
+      discount: Math.max(0, total - agreed),
+      leftToPay: Math.max(0, agreed - alreadyPaid),
+      invalid: hasAgreed && (Number.isNaN(agreed) || agreed < alreadyPaid || agreed > total),
+    }
+  }, [paymentForm.agreedTotal, selectedPaymentJob])
+
   async function handleSubmitPayment(e) {
     e.preventDefault()
 
@@ -306,6 +330,13 @@ function TeamOperationsPage() {
       return
     }
 
+    if (discountPreview?.hasAgreed && discountPreview.invalid) {
+      setStatusMessage(
+        `The discounted price must be between ${formatCurrency(discountPreview.alreadyPaid)} (already paid) and ${formatCurrency(discountPreview.total)} (job total).`,
+      )
+      return
+    }
+
     setSubmittingPayment(true)
     try {
       await createPaymentRecord({
@@ -314,6 +345,12 @@ function TeamOperationsPage() {
         job: paymentForm.mode === 'job' ? Number(paymentForm.jobId) : null,
         service_label: paymentForm.mode === 'walk_in' ? paymentForm.serviceLabel.trim() : '',
         note: paymentForm.note.trim(),
+        ...(paymentForm.mode === 'job' && paymentForm.agreedTotal !== ''
+          ? {
+              agreed_total: String(Number(paymentForm.agreedTotal)),
+              discount_reason: paymentForm.discountReason.trim(),
+            }
+          : {}),
       })
 
       setPaymentForm(defaultPaymentForm)
@@ -581,6 +618,13 @@ function TeamOperationsPage() {
                           <div className="border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600">
                             Qty: <span className="font-bold text-slate-900">{job.quantity || 1}</span>
                           </div>
+                          {job.discountAmount > 0 ? (
+                            <div className="border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 sm:col-span-3">
+                              Discount: <span className="font-bold">{formatCurrency(job.discountAmount)}</span>
+                              {job.discountReason ? ` - ${job.discountReason}` : ''} (agreed price{' '}
+                              {formatCurrency(job.amountDue)})
+                            </div>
+                          ) : null}
                         </div>
                       </article>
                     ))
@@ -671,6 +715,13 @@ function TeamOperationsPage() {
                             <div className="border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600">
                               Qty: <span className="font-bold text-slate-900">{job.quantity || 1}</span>
                             </div>
+                            {job.discountAmount > 0 ? (
+                              <div className="border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 sm:col-span-3">
+                                Discount: <span className="font-bold">{formatCurrency(job.discountAmount)}</span>
+                                {job.discountReason ? ` - ${job.discountReason}` : ''} (agreed price{' '}
+                                {formatCurrency(job.amountDue)})
+                              </div>
+                            ) : null}
                           </div>
 
                           <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
@@ -754,7 +805,14 @@ function TeamOperationsPage() {
                         Link to job with balance
                         <select
                           value={paymentForm.jobId}
-                          onChange={(e) => setPaymentForm((current) => ({ ...current, jobId: e.target.value }))}
+                          onChange={(e) =>
+                            setPaymentForm((current) => ({
+                              ...current,
+                              jobId: e.target.value,
+                              agreedTotal: '',
+                              discountReason: '',
+                            }))
+                          }
                           className="mt-2 w-full border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-navy"
                         >
                           <option value="">Select job</option>
@@ -777,6 +835,80 @@ function TeamOperationsPage() {
                       </label>
                     )}
                   </div>
+
+                  {selectedPaymentJob && discountPreview ? (
+                    <div className="border border-slate-200 bg-slate-50 p-4">
+                      <div className="grid gap-2 text-sm text-slate-600 sm:grid-cols-3">
+                        <p>
+                          Job total: <span className="font-bold text-slate-900">{formatCurrency(discountPreview.total)}</span>
+                        </p>
+                        <p>
+                          Already paid:{' '}
+                          <span className="font-bold text-slate-900">{formatCurrency(discountPreview.alreadyPaid)}</span>
+                        </p>
+                        <p>
+                          Balance: <span className="font-bold text-slate-900">{formatCurrency(selectedPaymentJob.balanceDue)}</span>
+                        </p>
+                      </div>
+                      {selectedPaymentJob.discountAmount > 0 ? (
+                        <p className="mt-2 text-sm text-slate-600">
+                          Current discount:{' '}
+                          <span className="font-bold text-slate-900">{formatCurrency(selectedPaymentJob.discountAmount)}</span>
+                          {selectedPaymentJob.discountReason ? ` (${selectedPaymentJob.discountReason})` : ''}
+                        </p>
+                      ) : null}
+
+                      <div className="mt-4 grid gap-3 md:grid-cols-2">
+                        <label className="block text-sm font-semibold text-slate-700">
+                          Discounted price (optional)
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={paymentForm.agreedTotal}
+                            onChange={(e) => setPaymentForm((current) => ({ ...current, agreedTotal: e.target.value }))}
+                            className="mt-2 w-full border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-navy"
+                            placeholder={`Agreed total, e.g. less than ${formatCurrency(discountPreview.total)}`}
+                          />
+                        </label>
+                        <label className="block text-sm font-semibold text-slate-700">
+                          Discount reason
+                          <input
+                            value={paymentForm.discountReason}
+                            onChange={(e) => setPaymentForm((current) => ({ ...current, discountReason: e.target.value }))}
+                            disabled={!discountPreview.hasAgreed}
+                            className="mt-2 w-full border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-navy disabled:bg-slate-100"
+                            placeholder="e.g. Bulk order, loyal customer"
+                          />
+                        </label>
+                      </div>
+
+                      {discountPreview.hasAgreed ? (
+                        discountPreview.invalid ? (
+                          <p className="mt-3 border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                            The discounted price must be between {formatCurrency(discountPreview.alreadyPaid)} (already paid) and{' '}
+                            {formatCurrency(discountPreview.total)} (job total).
+                          </p>
+                        ) : (
+                          <div className="mt-3 flex flex-col gap-2 border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 sm:flex-row sm:items-center sm:justify-between">
+                            <span>
+                              Discount <span className="font-bold">{formatCurrency(discountPreview.discount)}</span>. Customer pays{' '}
+                              <span className="font-bold">{formatCurrency(discountPreview.leftToPay)}</span> to close this job.
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setPaymentForm((current) => ({ ...current, amount: String(discountPreview.leftToPay) }))
+                              }
+                              className="border border-emerald-300 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-800 transition hover:border-emerald-500"
+                            >
+                              Use {formatCurrency(discountPreview.leftToPay)} as amount
+                            </button>
+                          </div>
+                        )
+                      ) : null}
+                    </div>
+                  ) : null}
 
                   <label className="block text-sm font-semibold text-slate-700">
                     Note

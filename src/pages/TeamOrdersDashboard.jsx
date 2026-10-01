@@ -1081,6 +1081,14 @@ function TeamOrdersDashboard() {
                             <span className="border border-slate-200 bg-slate-50 px-2 py-1 text-slate-600">
                               Total {formatCurrency(order.totalAmount)}
                             </span>
+                            {order.discountAmount > 0 ? (
+                              <span
+                                className="border border-emerald-200 bg-emerald-50 px-2 py-1 text-emerald-700"
+                                title={order.discountReason || undefined}
+                              >
+                                Discount {formatCurrency(order.discountAmount)}
+                              </span>
+                            ) : null}
                             <span className="border border-slate-200 bg-slate-50 px-2 py-1 text-slate-600">
                               Balance {formatCurrency(order.balanceDue)}
                             </span>
