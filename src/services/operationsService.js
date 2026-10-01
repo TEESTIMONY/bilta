@@ -43,15 +43,21 @@ function normalizeAuditLog(item) {
     modelName: item?.model_name || '',
     objectId: item?.object_id || '',
     performedByName: item?.performed_by_name || '',
+    performedByDisplay: item?.performed_by_display || item?.performed_by_name || 'Someone',
     reason: item?.reason || '',
     metadata: item?.metadata && typeof item.metadata === 'object' ? item.metadata : {},
     createdAt: item?.created_at || '',
   }
 }
 
-export async function getPaymentRecordsData() {
+// Pass a YYYY-MM-DD date to fetch just that day's records instead of the whole history.
+function dayQuery(date) {
+  return date ? `?date=${encodeURIComponent(date)}` : ''
+}
+
+export async function getPaymentRecordsData(date) {
   if (!USE_DJANGO_API) return { payments: [], source: 'disabled' }
-  const payments = await fetchAllPages(`${DJANGO_API_BASE}/payments/`)
+  const payments = await fetchAllPages(`${DJANGO_API_BASE}/payments/${dayQuery(date)}`)
   return { payments: payments.map(normalizePayment), source: 'django' }
 }
 
@@ -63,9 +69,9 @@ export async function createPaymentRecord(payload) {
   return normalizePayment(created)
 }
 
-export async function getPhotocopySessionsData() {
+export async function getPhotocopySessionsData(date) {
   if (!USE_DJANGO_API) return { sessions: [], source: 'disabled' }
-  const sessions = await fetchAllPages(`${DJANGO_API_BASE}/photocopy-sessions/`)
+  const sessions = await fetchAllPages(`${DJANGO_API_BASE}/photocopy-sessions/${dayQuery(date)}`)
   return { sessions: sessions.map(normalizePhotocopySession), source: 'django' }
 }
 
@@ -108,8 +114,8 @@ export async function updateSystemSetting(settingId, payload) {
   return normalizeSystemSetting(updated)
 }
 
-export async function getAuditLogsData() {
+export async function getAuditLogsData(date) {
   if (!USE_DJANGO_API) return { auditLogs: [], source: 'disabled' }
-  const auditLogs = await fetchAllPages(`${DJANGO_API_BASE}/audit-logs/`)
+  const auditLogs = await fetchAllPages(`${DJANGO_API_BASE}/audit-logs/${dayQuery(date)}`)
   return { auditLogs: auditLogs.map(normalizeAuditLog), source: 'django' }
 }

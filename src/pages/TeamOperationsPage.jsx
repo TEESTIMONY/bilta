@@ -118,8 +118,8 @@ function TeamOperationsPage() {
     try {
       const [summaryData, paymentData, sessionData, settingData, orderData, dayJobData] = await Promise.all([
         getDailySummary(targetDate),
-        getPaymentRecordsData(),
-        getPhotocopySessionsData(),
+        getPaymentRecordsData(targetDate),
+        getPhotocopySessionsData(targetDate),
         getSystemSetting(),
         getOrdersData(),
         getJobsForDate(targetDate),
