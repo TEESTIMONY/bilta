@@ -118,21 +118,3 @@ export async function ensureWalkInCustomer() {
     }),
   })
 }
-
-export async function createManualOrder({ customerName, phone, totalAmount, notes }) {
-  const normalizedAmount = Number(totalAmount || 0)
-  const walkInCustomer = await ensureWalkInCustomer()
-
-  const description = [customerName, phone, notes].filter(Boolean).join(' | ')
-
-  return createJob({
-    customer: walkInCustomer.id,
-    job_type: 'walk_in',
-    description,
-    status: 'pending',
-    quantity: 1,
-    unit_price: String(normalizedAmount),
-    amount_paid: String(normalizedAmount),
-    special_instructions: notes || '',
-  })
-}
