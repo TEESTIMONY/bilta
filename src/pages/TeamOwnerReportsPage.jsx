@@ -3,7 +3,13 @@ import { useNavigate } from 'react-router-dom'
 import TeamPageHeader from '../components/TeamPageHeader'
 import TeamNavbar from '../components/TeamNavbar'
 import { getDailySummary, getOrdersData } from '../services/ordersService'
-import { getAuditLogsData, getPhotocopySessionsData } from '../services/operationsService'
+import {
+  getAuditLogsData,
+  getCashCounts,
+  getPaymentRecordsData,
+  getPhotocopySessionsData,
+} from '../services/operationsService'
+import { countResult } from '../utils/cashCount'
 
 const ACTIVITY_PAGE_SIZE = 10
 
@@ -99,6 +105,11 @@ function describeActivity(entry) {
       return m.copies !== undefined
         ? `logged ${m.copies} photocopies (${formatCurrency(m.collected)} collected)`
         : 'logged a photocopy session'
+    case 'DailyCashCount:create':
+    case 'DailyCashCount:update':
+      return `${entry.action === 'update' ? 'recounted' : 'did the end-of-day count'}: cash ${formatCurrency(m.cash)} + transfers ${formatCurrency(
+        m.transfer,
+      )}${Number(m.difference) ? ` (${Number(m.difference) < 0 ? `${formatCurrency(-Number(m.difference))} short` : `${formatCurrency(m.difference)} over`})` : ' (matched)'}`
     case 'StaffAccount:update':
       return `updated ${m.username || 'a staff'} account`
     case 'StaffAccount:reset_password':
@@ -124,6 +135,8 @@ function TeamOwnerReportsPage() {
   const [jobs, setJobs] = useState([])
   const [sessions, setSessions] = useState([])
   const [activity, setActivity] = useState([])
+  const [cashCounts, setCashCounts] = useState([])
+  const [payments, setPayments] = useState([])
   const [personFilter, setPersonFilter] = useState('all')
   const [search, setSearch] = useState('')
   const [visibleCount, setVisibleCount] = useState(ACTIVITY_PAGE_SIZE)
@@ -134,16 +147,20 @@ function TeamOwnerReportsPage() {
     setLoading(true)
     setStatusMessage('')
     try {
-      const [summaryData, ordersData, sessionData, auditData] = await Promise.all([
+      const [summaryData, ordersData, sessionData, auditData, countData, paymentData] = await Promise.all([
         getDailySummary(targetDate),
         getOrdersData(),
         getPhotocopySessionsData(targetDate),
         getAuditLogsData(targetDate),
+        getCashCounts(targetDate),
+        getPaymentRecordsData(targetDate),
       ])
       setDailySummary(summaryData.summary)
       setJobs(ordersData.orders)
       setSessions(sessionData.sessions)
       setActivity(auditData.auditLogs)
+      setCashCounts(countData.counts)
+      setPayments(paymentData.payments)
     } catch (error) {
       setStatusMessage(`Could not load the report: ${error.message}`)
     } finally {
@@ -202,6 +219,31 @@ function TeamOwnerReportsPage() {
         time: formatTime(entry.createdAt),
       })
     }
+    for (const count of cashCounts) {
+      const result = countResult(count)
+      if (result.tone === 'ok') continue
+      items.push({
+        key: `count-${count.id}`,
+        text: `${count.staffName}'s end-of-day count is ${result.label}.`,
+        detail: `Cash ${formatCurrency(count.cashAmount)} + transfers ${formatCurrency(count.transferAmount)} = ${formatCurrency(
+          count.countedTotal,
+        )}, but the CMS recorded ${formatCurrency(count.recordedTotal)}.${count.note ? ` Note: ${count.note}` : ''}`,
+        time: formatTime(count.updatedAt),
+      })
+    }
+    if (reportDate < getWATDateKey(new Date())) {
+      const counted = new Set(cashCounts.map((count) => count.staffName))
+      const tookMoney = new Set(
+        [
+          ...payments.filter((payment) => Number(payment.amount) > 0).map((payment) => payment.recordedByName),
+          ...sessions.filter((session) => Number(session.actualCashCollected) > 0).map((session) => session.staffName),
+        ].filter(Boolean),
+      )
+      for (const name of tookMoney) {
+        if (counted.has(name)) continue
+        items.push({ key: `nocount-${name}`, text: `${name} took money but didn't do an end-of-day count.` })
+      }
+    }
     for (const session of sessions) {
       const gap = Number(session.revenueGap || 0)
       if (!gap) continue
@@ -220,26 +262,39 @@ function TeamOwnerReportsPage() {
       })
     }
     return items
-  }, [activity, doneButOwing, overdueJobs, sessions])
+  }, [activity, cashCounts, doneButOwing, overdueJobs, payments, reportDate, sessions])
 
   const people = useMemo(() => {
     const map = new Map()
+    const personFor = (name) => {
+      const key = name || 'Someone'
+      if (!map.has(key)) {
+        map.set(key, { name: key, jobs: 0, updates: 0, payments: 0, paymentTotal: 0, copies: 0, copyCash: 0, discounts: 0, other: 0 })
+      }
+      return map.get(key)
+    }
     for (const entry of activity) {
-      const name = entry.performedByDisplay
-      if (!map.has(name)) map.set(name, { name, jobs: 0, updates: 0, payments: 0, paymentTotal: 0, copies: 0, discounts: 0, other: 0 })
-      const person = map.get(name)
       const key = `${entry.modelName}:${entry.action}`
+      if (['PaymentRecord:create', 'PhotocopySession:create'].includes(key) || entry.modelName === 'DailyCashCount') continue
+      const person = personFor(entry.performedByDisplay)
       if (key === 'Job:create') person.jobs += 1
       else if (key === 'Job:update') person.updates += 1
-      else if (key === 'PaymentRecord:create') {
-        person.payments += 1
-        person.paymentTotal += Number(entry.metadata?.amount || 0)
-      } else if (key === 'PhotocopySession:create') person.copies += 1
       else if (key === 'Job:discount') person.discounts += 1
       else person.other += 1
     }
-    return [...map.values()].sort((a, b) => b.paymentTotal - a.paymentTotal || a.name.localeCompare(b.name))
-  }, [activity])
+    for (const payment of payments) {
+      const person = personFor(payment.recordedByName)
+      person.payments += 1
+      person.paymentTotal += Number(payment.amount || 0)
+    }
+    for (const session of sessions) {
+      const person = personFor(session.staffName)
+      person.copies += 1
+      person.copyCash += Number(session.actualCashCollected || 0)
+    }
+    for (const person of map.values()) person.takenTotal = person.paymentTotal + person.copyCash
+    return [...map.values()].sort((a, b) => b.takenTotal - a.takenTotal || a.name.localeCompare(b.name))
+  }, [activity, payments, sessions])
 
   const sentences = useMemo(
     () =>
@@ -285,7 +340,13 @@ function TeamOwnerReportsPage() {
           ) : null}
 
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <SummaryStat label="Collected" value={formatCurrency(dailySummary?.total_revenue ?? 0)} />
+            <SummaryStat
+              label="Total collected"
+              value={formatCurrency(Number(dailySummary?.total_revenue ?? 0) + Number(dailySummary?.photocopy_revenue ?? 0))}
+              note={`Payments ${formatCurrency(dailySummary?.total_revenue ?? 0)} + photocopies ${formatCurrency(
+                dailySummary?.photocopy_revenue ?? 0,
+              )}`}
+            />
             <SummaryStat
               label="Still owed on this day's jobs"
               value={formatCurrency(dailySummary?.outstanding_balances ?? 0)}
@@ -339,8 +400,27 @@ function TeamOwnerReportsPage() {
                     <li key={person.name} className="py-3">
                       <div className="flex items-baseline justify-between gap-3">
                         <p className="font-bold text-slate-900">{person.name}</p>
-                        <p className="text-sm font-semibold text-slate-700">{formatCurrency(person.paymentTotal)} taken</p>
+                        <p className="text-sm font-semibold text-slate-700">{formatCurrency(person.takenTotal)} taken</p>
                       </div>
+                      {(() => {
+                        const count = cashCounts.find((item) => item.staffName === person.name)
+                        if (!count) {
+                          return person.takenTotal > 0 ? (
+                            <p className="mt-0.5 text-sm font-semibold text-slate-500">End-of-day count: not done</p>
+                          ) : null
+                        }
+                        const result = countResult(count)
+                        return (
+                          <p
+                            className={`mt-0.5 text-sm font-semibold ${
+                              result.tone === 'ok' ? 'text-emerald-700' : result.tone === 'short' ? 'text-red-700' : 'text-amber-700'
+                            }`}
+                          >
+                            End-of-day count: {result.tone === 'ok' ? '✓ matches' : result.label} (cash {formatCurrency(count.cashAmount)} +
+                            transfers {formatCurrency(count.transferAmount)})
+                          </p>
+                        )
+                      })()}
                       <p className="mt-0.5 text-sm text-slate-600">
                         {[
                           person.jobs ? `${person.jobs} job${person.jobs === 1 ? '' : 's'} added` : '',
@@ -442,11 +522,12 @@ function TeamOwnerReportsPage() {
   )
 }
 
-function SummaryStat({ label, value, alert = false }) {
+function SummaryStat({ label, value, note = '', alert = false }) {
   return (
     <div className={`border px-4 py-3 ${alert ? 'border-red-200 bg-red-50' : 'border-slate-200 bg-white'}`}>
       <p className="text-sm text-slate-600">{label}</p>
       <p className={`mt-1 text-xl font-extrabold ${alert ? 'text-red-700' : 'text-slate-900'}`}>{value}</p>
+      {note ? <p className="mt-1 text-xs text-slate-600">{note}</p> : null}
     </div>
   )
 }

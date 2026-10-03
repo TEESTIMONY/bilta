@@ -119,3 +119,38 @@ export async function getAuditLogsData(date) {
   const auditLogs = await fetchAllPages(`${DJANGO_API_BASE}/audit-logs/${dayQuery(date)}`)
   return { auditLogs: auditLogs.map(normalizeAuditLog), source: 'django' }
 }
+
+function normalizeCashCount(item) {
+  return {
+    ...item,
+    staffId: item?.staff ?? null,
+    staffName: item?.staff_name || '',
+    cashAmount: Number(item?.cash_amount || 0),
+    transferAmount: Number(item?.transfer_amount || 0),
+    countedTotal: Number(item?.counted_total || 0),
+    recordedTotal: Number(item?.recorded_total || 0),
+    difference: Number(item?.difference || 0),
+    note: item?.note || '',
+    updatedAt: item?.updated_at || '',
+  }
+}
+
+// End-of-day counts for a day (staff get their own; the owner gets everyone's).
+export async function getCashCounts(date) {
+  if (!USE_DJANGO_API) return { counts: [], source: 'disabled' }
+  const counts = await fetchAllPages(`${DJANGO_API_BASE}/cash-counts/${dayQuery(date)}`)
+  return { counts: counts.map(normalizeCashCount), source: 'django' }
+}
+
+// Saves (or updates) the signed-in person's count for today.
+export async function saveCashCount({ cashAmount, transferAmount, note }) {
+  const saved = await fetchJson(`${DJANGO_API_BASE}/cash-counts/`, {
+    method: 'POST',
+    body: JSON.stringify({
+      cash_amount: String(Number(cashAmount || 0)),
+      transfer_amount: String(Number(transferAmount || 0)),
+      note: note || '',
+    }),
+  })
+  return normalizeCashCount(saved)
+}

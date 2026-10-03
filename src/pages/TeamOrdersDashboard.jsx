@@ -1,6 +1,7 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react'
 import { ChevronDown, Plus, Search, X } from 'lucide-react'
 import { Link, useSearchParams } from 'react-router-dom'
+import EndOfDayCount from '../components/EndOfDayCount'
 import JobOrderForm from '../components/JobOrderForm'
 import TeamPageHeader from '../components/TeamPageHeader'
 import TeamNavbar from '../components/TeamNavbar'
@@ -149,7 +150,7 @@ function compareDeskOrders(left, right) {
 }
 
 function TeamOrdersDashboard() {
-  const { isOwner } = useAuth()
+  const { isOwner, user } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
   const [orders, setOrders] = useState([])
   const [customers, setCustomers] = useState([])
@@ -1117,6 +1118,13 @@ function TeamOrdersDashboard() {
                 ) : null}
               </div>
           </section>
+
+          {user?.id ? (
+            <EndOfDayCount
+              userId={user.id}
+              refreshKey={`${dailySummary?.total_revenue ?? ''}-${dailySummary?.photocopy_revenue ?? ''}`}
+            />
+          ) : null}
         </section>
       </main>
     </>
