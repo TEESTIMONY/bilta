@@ -521,7 +521,9 @@ function TeamOrdersDashboard() {
       <main className="min-h-screen bg-[#F4F8FC] pb-12">
         <TeamPageHeader
           title="Today"
-          subtitle={new Date().toLocaleDateString('en-NG', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+          subtitle={`${new Date().toLocaleDateString('en-NG', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}${
+            isOwner ? '' : ' · Showing only your jobs and payments'
+          }`}
         >
           <button
             type="button"
