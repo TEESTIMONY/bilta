@@ -7,6 +7,8 @@ function normalizePayment(item) {
     jobId: item?.job || null,
     source: item?.source || 'job',
     recordedByName: item?.recorded_by_name || '',
+    recordedById: item?.recorded_by ?? null,
+    customerName: item?.customer_name || '',
     serviceLabel: item?.service_label || '',
     note: item?.note || '',
     createdAt: item?.created_at || '',
@@ -25,6 +27,7 @@ function normalizePhotocopySession(item) {
     revenueGap: Number(item?.revenue_gap || 0),
     hasDiscrepancy: Boolean(item?.has_discrepancy),
     staffName: item?.staff_name || '',
+    staffId: item?.staff ?? null,
     createdAt: item?.created_at || '',
   }
 }
@@ -118,4 +121,118 @@ export async function getAuditLogsData(date) {
   if (!USE_DJANGO_API) return { auditLogs: [], source: 'disabled' }
   const auditLogs = await fetchAllPages(`${DJANGO_API_BASE}/audit-logs/${dayQuery(date)}`)
   return { auditLogs: auditLogs.map(normalizeAuditLog), source: 'django' }
+}
+
+function normalizeCashCount(item) {
+  return {
+    ...item,
+    staffId: item?.staff ?? null,
+    staffName: item?.staff_name || '',
+    cashAmount: Number(item?.cash_amount || 0),
+    transferAmount: Number(item?.transfer_amount || 0),
+    countedTotal: Number(item?.counted_total || 0),
+    recordedTotal: Number(item?.recorded_total || 0),
+    spentFromTakings: Number(item?.spent_from_takings || 0),
+    expectedTotal: Number(item?.expected_total ?? item?.recorded_total ?? 0),
+    difference: Number(item?.difference || 0),
+    note: item?.note || '',
+    updatedAt: item?.updated_at || '',
+  }
+}
+
+// End-of-day counts for a day (staff get their own; the owner gets everyone's).
+export async function getCashCounts(date) {
+  if (!USE_DJANGO_API) return { counts: [], source: 'disabled' }
+  const counts = await fetchAllPages(`${DJANGO_API_BASE}/cash-counts/${dayQuery(date)}`)
+  return { counts: counts.map(normalizeCashCount), source: 'django' }
+}
+
+// Saves (or updates) the signed-in person's count for today.
+export async function saveCashCount({ cashAmount, transferAmount, note }) {
+  const saved = await fetchJson(`${DJANGO_API_BASE}/cash-counts/`, {
+    method: 'POST',
+    body: JSON.stringify({
+      cash_amount: String(Number(cashAmount || 0)),
+      transfer_amount: String(Number(transferAmount || 0)),
+      note: note || '',
+    }),
+  })
+  return normalizeCashCount(saved)
+}
+
+export const EXPENSE_CATEGORIES = [
+  { value: 'fuel', label: 'Fuel / diesel' },
+  { value: 'materials', label: 'Materials' },
+  { value: 'salaries', label: 'Salaries' },
+  { value: 'transport', label: 'Transport' },
+  { value: 'rent_bills', label: 'Rent & bills' },
+  { value: 'repairs', label: 'Repairs' },
+  { value: 'food', label: 'Food' },
+  { value: 'other', label: 'Other' },
+]
+
+function normalizeExpense(item) {
+  return {
+    ...item,
+    amount: Number(item?.amount || 0),
+    categoryLabel: item?.category_label || item?.category || '',
+    paidFromTakings: Boolean(item?.paid_from_takings),
+    recordedByName: item?.recorded_by_name || '',
+    recordedById: item?.recorded_by ?? null,
+    createdAt: item?.created_at || '',
+  }
+}
+
+// Staff get their own expenses; the owner gets everyone's.
+export async function getExpenses(date) {
+  if (!USE_DJANGO_API) return { expenses: [], source: 'disabled' }
+  const expenses = await fetchAllPages(`${DJANGO_API_BASE}/expenses/${dayQuery(date)}`)
+  return { expenses: expenses.map(normalizeExpense), source: 'django' }
+}
+
+export async function createExpense({ date, category, description, amount, paidFromTakings }) {
+  const created = await fetchJson(`${DJANGO_API_BASE}/expenses/`, {
+    method: 'POST',
+    body: JSON.stringify({
+      ...(date ? { date } : {}),
+      category,
+      description,
+      amount: String(Number(amount)),
+      paid_from_takings: Boolean(paidFromTakings),
+    }),
+  })
+  return normalizeExpense(created)
+}
+
+export async function deleteExpense(expenseId) {
+  await fetchJson(`${DJANGO_API_BASE}/expenses/${expenseId}/`, { method: 'DELETE' })
+}
+
+// Owner only: money in (staff counts) and out (expenses) for each day from start to end.
+export async function getMoneyStatement(start, end) {
+  const data = await fetchJson(
+    `${DJANGO_API_BASE}/reports/statement/?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`,
+  )
+  const num = (value) => Number(value || 0)
+  return {
+    days: (data?.days || []).map((day) => ({
+      date: day.date,
+      cash: num(day.cash),
+      transfer: num(day.transfer),
+      peopleCounted: Number(day.people_counted || 0),
+      spentFromTakings: num(day.spent_from_takings),
+      received: num(day.received),
+      expenses: num(day.expenses),
+      remaining: num(day.remaining),
+    })),
+    totals: {
+      cash: num(data?.totals?.cash),
+      transfer: num(data?.totals?.transfer),
+      spentFromTakings: num(data?.totals?.spent_from_takings),
+      received: num(data?.totals?.received),
+      expenses: num(data?.totals?.expenses),
+      remaining: num(data?.totals?.remaining),
+    },
+    byCategory: (data?.expenses_by_category || []).map((row) => ({ ...row, total: num(row.total) })),
+  }
 }

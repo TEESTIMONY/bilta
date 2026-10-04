@@ -1,6 +1,7 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react'
 import { ChevronDown, Plus, Search, X } from 'lucide-react'
 import { Link, useSearchParams } from 'react-router-dom'
+import EndOfDayCount from '../components/EndOfDayCount'
 import JobOrderForm from '../components/JobOrderForm'
 import TeamPageHeader from '../components/TeamPageHeader'
 import TeamNavbar from '../components/TeamNavbar'
@@ -149,7 +150,7 @@ function compareDeskOrders(left, right) {
 }
 
 function TeamOrdersDashboard() {
-  const { isOwner } = useAuth()
+  const { isOwner, user } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
   const [orders, setOrders] = useState([])
   const [customers, setCustomers] = useState([])
@@ -521,7 +522,9 @@ function TeamOrdersDashboard() {
       <main className="min-h-screen bg-[#F4F8FC] pb-12">
         <TeamPageHeader
           title="Today"
-          subtitle={new Date().toLocaleDateString('en-NG', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+          subtitle={`${new Date().toLocaleDateString('en-NG', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}${
+            isOwner ? '' : ' · Showing only your jobs and payments'
+          }`}
         >
           <button
             type="button"
@@ -669,6 +672,15 @@ function TeamOrdersDashboard() {
                             </span>
                             {order.isOverdue ? (
                               <span className="border border-red-300 bg-red-100 px-2 py-0.5 text-red-700">Overdue</span>
+                            ) : null}
+                            {isOwner ? (
+                              order.createdByName ? (
+                                <span className="border border-navy/30 bg-navy/5 px-2 py-0.5 text-navy">
+                                  Added by {order.createdByName}
+                                </span>
+                              ) : (
+                                <span className="border border-violet-300 bg-violet-50 px-2 py-0.5 text-violet-800">Website order</span>
+                              )
                             ) : null}
                             {isFromEarlierDay ? (
                               <span className="border border-slate-300 bg-slate-100 px-2 py-0.5 text-slate-600">
@@ -1115,6 +1127,13 @@ function TeamOrdersDashboard() {
                 ) : null}
               </div>
           </section>
+
+          {user?.id ? (
+            <EndOfDayCount
+              userId={user.id}
+              refreshKey={`${dailySummary?.total_revenue ?? ''}-${dailySummary?.photocopy_revenue ?? ''}`}
+            />
+          ) : null}
         </section>
       </main>
     </>

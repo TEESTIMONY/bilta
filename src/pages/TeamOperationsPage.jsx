@@ -197,6 +197,13 @@ function TeamOperationsPage() {
     }
   }
 
+  // Everything taken in on this day: job and walk-in payments plus photocopy cash.
+  const moneyCollected = useMemo(() => {
+    const payments = paymentSummary.total
+    const photocopies = selectedDateSessions.reduce((sum, session) => sum + Number(session.actualCashCollected || 0), 0)
+    return { payments, photocopies, total: payments + photocopies }
+  }, [paymentSummary.total, selectedDateSessions])
+
   // Jobs added on this day, plus jobs from earlier days that were finished on it.
   const recordJobs = useMemo(() => {
     const byId = new Map()
@@ -376,7 +383,14 @@ function TeamOperationsPage() {
     <>
       <TeamNavbar />
       <main className="min-h-screen bg-[#F4F8FC] pb-12">
-        <TeamPageHeader title="Records" subtitle="Pick a day to see its jobs, payments and photocopies.">
+        <TeamPageHeader
+          title="Records"
+          subtitle={
+            isOwner
+              ? 'Pick a day to see its jobs, payments and photocopies.'
+              : 'Pick a day to see your jobs, payments and photocopies. You only see your own work.'
+          }
+        >
             <label className="block text-sm font-semibold text-slate-700">
               Day
               <input
@@ -395,11 +409,15 @@ function TeamOperationsPage() {
             </div>
           ) : null}
 
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <SummaryStat
+              label="Total collected"
+              value={formatCurrency(moneyCollected.total)}
+              note={`Payments ${formatCurrency(moneyCollected.payments)} + photocopies ${formatCurrency(moneyCollected.photocopies)}`}
+              strong
+            />
             <SummaryStat label="Jobs added" value={dayJobs.length} />
-            <SummaryStat label="Collected" value={formatCurrency(paymentSummary.total)} />
             <SummaryStat label="Owed on these jobs" value={formatCurrency(recordCounts.owed)} alert={recordCounts.owed > 0} />
-            <SummaryStat label="Photocopy cash" value={formatCurrency(dailySummary?.photocopy_revenue ?? 0)} />
           </div>
           {(dailySummary?.anomalies?.photocopy_discrepancies ?? 0) > 0 ? (
             <p className="mt-3 border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -475,6 +493,17 @@ function TeamOperationsPage() {
                             <p className="truncate text-sm text-slate-600">
                               {job.description || titleCase(job.jobType)} · {titleCase(job.status)}
                             </p>
+                            {isOwner ? (
+                              <span
+                                className={`mt-1 inline-block border px-2 py-0.5 text-xs font-semibold ${
+                                  job.createdByName
+                                    ? 'border-navy/30 bg-navy/5 text-navy'
+                                    : 'border-violet-300 bg-violet-50 text-violet-800'
+                                }`}
+                              >
+                                {job.createdByName ? `Added by ${job.createdByName}` : 'Website order'}
+                              </span>
+                            ) : null}
                           </div>
                           <div className="shrink-0 text-right">
                             <p className="font-extrabold text-slate-900">{formatCurrency(job.amountDue)}</p>
@@ -737,12 +766,6 @@ function TeamOperationsPage() {
                     />
                   </label>
 
-                  <div className="grid gap-3 sm:grid-cols-3">
-                    <ValueCard label="Payments Today" value={selectedDatePayments.length} />
-                    <ValueCard label="Walk-in Entries" value={paymentSummary.walkIn} />
-                    <ValueCard label="Logged Total" value={formatCurrency(paymentSummary.total)} />
-                  </div>
-
                   <div className="flex justify-end">
                     <button
                       type="submit"
@@ -761,6 +784,12 @@ function TeamOperationsPage() {
                       Payment History
                     </p>
                     <h2 className="mt-1 text-2xl font-extrabold text-navy">Payments for {summaryDate}</h2>
+                    <p className="mt-1 text-base font-bold text-slate-900">
+                      Total: {formatCurrency(paymentSummary.total)}
+                      <span className="ml-1 text-sm font-normal text-slate-600">
+                        ({selectedDatePayments.length} payment{selectedDatePayments.length === 1 ? '' : 's'})
+                      </span>
+                    </p>
                   </div>
                   {loading ? <span className="text-sm text-slate-500">Loading...</span> : null}
                 </div>
@@ -1002,11 +1031,17 @@ function jobMoneyTone(job) {
   return Number(job.balanceDue || 0) > 0 ? 'text-red-700' : 'text-emerald-700'
 }
 
-function SummaryStat({ label, value, alert = false }) {
+function SummaryStat({ label, value, note = '', alert = false, strong = false }) {
+  const tone = alert
+    ? 'border-red-200 bg-red-50'
+    : strong
+      ? 'col-span-2 border-navy/30 bg-navy/5 sm:col-span-1'
+      : 'border-slate-200 bg-white'
   return (
-    <div className={`border px-4 py-3 ${alert ? 'border-red-200 bg-red-50' : 'border-slate-200 bg-white'}`}>
+    <div className={`border px-4 py-3 ${tone}`}>
       <p className="text-sm text-slate-600">{label}</p>
-      <p className={`mt-1 text-xl font-extrabold ${alert ? 'text-red-700' : 'text-slate-900'}`}>{value}</p>
+      <p className={`mt-1 text-xl font-extrabold ${alert ? 'text-red-700' : strong ? 'text-navy' : 'text-slate-900'}`}>{value}</p>
+      {note ? <p className="mt-1 text-xs text-slate-600">{note}</p> : null}
     </div>
   )
 }
