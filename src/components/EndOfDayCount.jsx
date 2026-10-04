@@ -28,7 +28,8 @@ function todayKey() {
 
 // End-of-day cash-up on the Today page: the signed-in person enters the cash and transfers
 // they actually collected, and it's checked against what they recorded in the CMS.
-function EndOfDayCount({ userId, refreshKey = 0 }) {
+// Staff do a blind count: they enter the money but only the owner sees how it compares.
+function EndOfDayCount({ userId, isOwner = false, refreshKey = 0 }) {
   const [count, setCount] = useState(null)
   const [editing, setEditing] = useState(false)
   const [form, setForm] = useState({ cash: '', transfer: '', note: '' })
@@ -97,7 +98,7 @@ function EndOfDayCount({ userId, refreshKey = 0 }) {
           <p className="mt-1 text-sm text-slate-600">
             {count
               ? `Counted at ${formatTime(count.updatedAt)}.`
-              : 'Before you leave, count the cash and transfers you collected today.'}
+              : "Before you leave, count all the cash and transfers you collected today, including any money you've already spent."}
           </p>
         </div>
         {!editing ? (
@@ -120,21 +121,20 @@ function EndOfDayCount({ userId, refreshKey = 0 }) {
             <span className="font-bold">{formatCurrency(count.transferAmount)}</span> ={' '}
             <span className="font-bold">{formatCurrency(count.countedTotal)}</span>
           </p>
-          <p className="text-[15px] text-slate-800">
-            Recorded in the CMS: <span className="font-bold">{formatCurrency(count.recordedTotal)}</span>
-            {count.spentFromTakings > 0 ? (
-              <>
-                {' '}
-                − spent from takings <span className="font-bold">{formatCurrency(count.spentFromTakings)}</span> ={' '}
-                <span className="font-bold">{formatCurrency(count.expectedTotal)}</span> expected
-              </>
-            ) : null}
-          </p>
-          <p className={`border px-3 py-2 text-sm font-semibold ${resultClass}`}>
-            {result.tone === 'ok'
-              ? '✓ Matches the CMS.'
-              : `${result.label}: please recount, and check every payment was recorded. The owner can see this.`}
-          </p>
+          {isOwner ? (
+            <>
+              <p className="text-[15px] text-slate-800">
+                Recorded in the CMS: <span className="font-bold">{formatCurrency(count.recordedTotal)}</span>
+              </p>
+              <p className={`border px-3 py-2 text-sm font-semibold ${resultClass}`}>
+                {result.tone === 'ok' ? '✓ Matches the CMS.' : `${result.label}.`}
+              </p>
+            </>
+          ) : (
+            <p className="border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800">
+              ✓ Count saved. The owner will check it. If you counted wrongly, tap Recount.
+            </p>
+          )}
           {count.note ? <p className="text-sm text-slate-600">Note: {count.note}</p> : null}
         </div>
       ) : null}
@@ -143,7 +143,7 @@ function EndOfDayCount({ userId, refreshKey = 0 }) {
         <form onSubmit={handleSave} className="mt-4 space-y-3">
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="block text-sm font-semibold text-slate-700">
-              Cash collected
+              Cash collected <span className="font-normal text-slate-500">(before expenses)</span>
               <input
                 type="number"
                 min="0"

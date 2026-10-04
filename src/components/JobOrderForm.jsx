@@ -91,6 +91,11 @@ function JobOrderForm({ customers = [], jobTypes = [], onCreated, onError }) {
   }
 
   async function resolveCustomerId() {
+    if (!isProject) {
+      // Walk-in jobs only need what was ordered; they go under the shared Walk-in customer.
+      const walkIn = await ensureWalkInCustomer()
+      return walkIn.id
+    }
     if (matchedCustomer) return matchedCustomer.id
 
     const name = form.customerName.trim()
@@ -137,15 +142,15 @@ function JobOrderForm({ customers = [], jobTypes = [], onCreated, onError }) {
         customer,
         job_type: isProject ? selectedJobType : 'walk_in',
         status: 'pending',
-        fulfilment: form.fulfilment,
-        deadline: form.dateNeeded ? new Date(`${form.dateNeeded}T17:00`).toISOString() : null,
+        fulfilment: isProject ? form.fulfilment : 'pickup',
+        deadline: isProject && form.dateNeeded ? new Date(`${form.dateNeeded}T17:00`).toISOString() : null,
         items: filled.map((item) => ({
           description: item.description.trim(),
           quantity: Math.max(1, Number(item.quantity)),
           rate: String(Number(item.rate)),
         })),
         amount_paid: String(paid),
-        special_instructions: form.notes.trim(),
+        special_instructions: isProject ? form.notes.trim() : '',
         project_scope_note: isProject ? form.projectScopeNote.trim() : '',
         ...(hasDiscount ? { agreed_total: String(agreed), discount_reason: form.discountReason.trim() } : {}),
       })
@@ -182,57 +187,59 @@ function JobOrderForm({ customers = [], jobTypes = [], onCreated, onError }) {
         ))}
       </div>
 
-      <fieldset>
-        <legend className="text-sm font-bold text-navy">Customer details</legend>
-        <div className="mt-2 grid gap-3 sm:grid-cols-2">
-          <label className="block text-sm font-semibold text-slate-700">
-            Customer {isProject ? '' : <span className="font-normal text-slate-500">(optional)</span>}
-            <input value={form.customerName} onChange={set('customerName')} className={inputClass} placeholder="Name" />
-          </label>
-          <label className="block text-sm font-semibold text-slate-700">
-            Phone {isProject ? '' : <span className="font-normal text-slate-500">(optional)</span>}
-            <input type="tel" value={form.phone} onChange={set('phone')} className={inputClass} placeholder="080..." />
-          </label>
-          <label className="block text-sm font-semibold text-slate-700 sm:col-span-2">
-            Address <span className="font-normal text-slate-500">(optional)</span>
-            <input value={form.address} onChange={set('address')} className={inputClass} placeholder="For delivery" />
-          </label>
-        </div>
-        {matchedCustomer ? (
-          <p className="mt-2 border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-            Returning customer: <span className="font-bold">{matchedCustomer.full_name}</span>. This job will be added to
-            their record.
-          </p>
-        ) : !isProject && !form.customerName.trim() && !form.phone.trim() ? (
-          <p className="mt-2 text-sm text-slate-500">Leave blank for a quick walk-in job.</p>
-        ) : null}
-      </fieldset>
+      {isProject ? (
+        <>
+          <fieldset>
+            <legend className="text-sm font-bold text-navy">Customer details</legend>
+            <div className="mt-2 grid gap-3 sm:grid-cols-2">
+              <label className="block text-sm font-semibold text-slate-700">
+                Customer {isProject ? '' : <span className="font-normal text-slate-500">(optional)</span>}
+                <input value={form.customerName} onChange={set('customerName')} className={inputClass} placeholder="Name" />
+              </label>
+              <label className="block text-sm font-semibold text-slate-700">
+                Phone {isProject ? '' : <span className="font-normal text-slate-500">(optional)</span>}
+                <input type="tel" value={form.phone} onChange={set('phone')} className={inputClass} placeholder="080..." />
+              </label>
+              <label className="block text-sm font-semibold text-slate-700 sm:col-span-2">
+                Address <span className="font-normal text-slate-500">(optional)</span>
+                <input value={form.address} onChange={set('address')} className={inputClass} placeholder="For delivery" />
+              </label>
+            </div>
+            {matchedCustomer ? (
+              <p className="mt-2 border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+                Returning customer: <span className="font-bold">{matchedCustomer.full_name}</span>. This job will be added to
+                their record.
+              </p>
+            ) : null}
+          </fieldset>
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        <label className="block text-sm font-semibold text-slate-700">
-          Date needed
-          <input type="date" value={form.dateNeeded} onChange={set('dateNeeded')} className={inputClass} />
-        </label>
-        <div className="text-sm font-semibold text-slate-700">
-          Pickup or delivery
-          <div className="mt-1.5 grid grid-cols-2 gap-2">
-            {['pickup', 'delivery'].map((value) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setForm((current) => ({ ...current, fulfilment: value }))}
-                className={`min-h-[44px] border px-3 text-sm font-semibold transition ${
-                  form.fulfilment === value
-                    ? 'border-navy bg-navy text-white'
-                    : 'border-slate-300 bg-white text-slate-700 hover:border-navy'
-                }`}
-              >
-                {titleCase(value)}
-              </button>
-            ))}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block text-sm font-semibold text-slate-700">
+              Date needed
+              <input type="date" value={form.dateNeeded} onChange={set('dateNeeded')} className={inputClass} />
+            </label>
+            <div className="text-sm font-semibold text-slate-700">
+              Pickup or delivery
+              <div className="mt-1.5 grid grid-cols-2 gap-2">
+                {['pickup', 'delivery'].map((value) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setForm((current) => ({ ...current, fulfilment: value }))}
+                    className={`min-h-[44px] border px-3 text-sm font-semibold transition ${
+                      form.fulfilment === value
+                        ? 'border-navy bg-navy text-white'
+                        : 'border-slate-300 bg-white text-slate-700 hover:border-navy'
+                    }`}
+                  >
+                    {titleCase(value)}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
+        </>
+      ) : null}
 
       <fieldset>
         <legend className="text-sm font-bold text-navy">Items</legend>
@@ -369,16 +376,18 @@ function JobOrderForm({ customers = [], jobTypes = [], onCreated, onError }) {
         </div>
       </div>
 
-      <label className="block text-sm font-semibold text-slate-700">
-        Notes <span className="font-normal text-slate-500">(optional)</span>
-        <textarea
-          value={form.notes}
-          onChange={set('notes')}
-          className={inputClass}
-          rows={2}
-          placeholder="Colours, finishing, delivery instructions..."
-        />
-      </label>
+      {isProject ? (
+          <label className="block text-sm font-semibold text-slate-700">
+            Notes <span className="font-normal text-slate-500">(optional)</span>
+            <textarea
+              value={form.notes}
+              onChange={set('notes')}
+              className={inputClass}
+              rows={2}
+              placeholder="Colours, finishing, delivery instructions..."
+            />
+          </label>
+      ) : null}
 
       {isProject ? (
         <div className="space-y-3 border border-slate-200 bg-slate-50 p-4">

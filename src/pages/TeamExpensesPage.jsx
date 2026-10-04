@@ -19,7 +19,7 @@ import {
 const inputClass =
   'mt-1 w-full min-h-[44px] border border-slate-300 bg-white px-3 text-[15px] outline-none transition focus:border-navy'
 
-const emptyExpense = { category: 'fuel', description: '', amount: '', paidFromTakings: true }
+const emptyExpense = { category: 'fuel', description: '', amount: '' }
 
 function formatCurrency(value) {
   return new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 }).format(
@@ -145,7 +145,6 @@ function TeamExpensesPage() {
         category: form.category,
         description: form.description.trim(),
         amount: form.amount,
-        paidFromTakings: form.paidFromTakings,
       })
       setForm(emptyExpense)
       setMessage(`Expense of ${formatCurrency(form.amount)} saved.`)
@@ -227,18 +226,6 @@ function TeamExpensesPage() {
           />
         </label>
       </div>
-      <label className="mt-3 flex min-h-[44px] items-center gap-3 text-sm text-slate-700">
-        <input
-          type="checkbox"
-          checked={form.paidFromTakings}
-          onChange={(e) => setForm((current) => ({ ...current, paidFromTakings: e.target.checked }))}
-          className="h-5 w-5"
-        />
-        <span>
-          <span className="font-semibold">Paid from today&apos;s takings</span> (the money collected today). Untick if it was paid
-          another way, e.g. from the bank.
-        </span>
-      </label>
       <button type="submit" disabled={saving} className="btn-primary mt-3 min-h-[44px] w-full disabled:opacity-60 sm:w-auto">
         {saving ? 'Saving...' : 'Save expense'}
       </button>
@@ -260,7 +247,7 @@ function TeamExpensesPage() {
                 <p className="text-sm text-slate-600">
                   {expense.categoryLabel}
                   {isOwner && expense.recordedByName ? ` · ${expense.recordedByName}` : ''}
-                  {expense.paidFromTakings ? ' · from takings' : ' · paid another way'}
+
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
@@ -350,17 +337,24 @@ function TeamExpensesPage() {
           ) : null}
 
           {isOwner && totals ? (
-            <div className="mt-4 grid grid-cols-3 gap-2 sm:gap-3">
-              <MoneyStat label="Received" value={totals.received} />
-              <MoneyStat label="Expenses" value={totals.expenses} />
-              <MoneyStat label="Remaining" value={totals.remaining} tone={totals.remaining < 0 ? 'bad' : 'good'} />
+            <div className="mt-4 grid gap-2 sm:grid-cols-3 sm:gap-3">
+              <MoneyStat
+                label="Received"
+                value={totals.received}
+                note={`Staff counts: cash ${formatCurrency(totals.cash)} + transfers ${formatCurrency(totals.transfer)}`}
+              />
+              <MoneyStat
+                label="Expenses"
+                value={totals.expenses}
+                note="Everything spent"
+              />
+              <MoneyStat
+                label="Remaining"
+                value={totals.remaining}
+                tone={totals.remaining < 0 ? 'bad' : 'good'}
+                note={`Received ${formatCurrency(totals.received)} − expenses ${formatCurrency(totals.expenses)}: the money left`}
+              />
             </div>
-          ) : null}
-          {isOwner && totals ? (
-            <p className="mt-2 text-sm text-slate-600">
-              Received = staff counts (cash {formatCurrency(totals.cash)} + transfers {formatCurrency(totals.transfer)})
-              {totals.spentFromTakings ? ` + ${formatCurrency(totals.spentFromTakings)} already spent from takings` : ''}.
-            </p>
           ) : null}
 
           {view === 'day' && !isOwner ? (
@@ -385,7 +379,6 @@ function TeamExpensesPage() {
                   counts={counts}
                   payments={dayPayments}
                   sessions={daySessions}
-                  expenses={expenses}
                   loading={loading}
                   initialOpenId={selectedDay === linkedDay ? linkedStaff : null}
                 />
@@ -447,12 +440,13 @@ function TeamExpensesPage() {
   )
 }
 
-function MoneyStat({ label, value, tone = 'normal' }) {
+function MoneyStat({ label, value, note = '', tone = 'normal' }) {
   const color = tone === 'bad' ? 'text-red-700' : tone === 'good' ? 'text-emerald-700' : 'text-slate-900'
   return (
-    <div className="border border-slate-200 bg-white px-3 py-3 sm:px-4">
+    <div className="border border-slate-200 bg-white px-4 py-3">
       <p className="text-sm text-slate-600">{label}</p>
-      <p className={`mt-1 text-base font-extrabold sm:text-xl ${color}`}>{formatCurrency(value)}</p>
+      <p className={`mt-1 text-xl font-extrabold ${color}`}>{formatCurrency(value)}</p>
+      {note ? <p className="mt-1 text-xs leading-5 text-slate-600">{note}</p> : null}
     </div>
   )
 }

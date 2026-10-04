@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { ChevronDown } from 'lucide-react'
 import TeamPageHeader from '../components/TeamPageHeader'
 import TeamNavbar from '../components/TeamNavbar'
+import { useAuth } from '../context/authContext'
 import { createCustomer, getCustomersData } from '../services/customersService'
 
 const defaultForm = {
@@ -32,6 +33,8 @@ function titleCase(value) {
 }
 
 function TeamCustomersPage() {
+  // Staff can add customers but not browse the customer list.
+  const { isOwner } = useAuth()
   const [customers, setCustomers] = useState([])
   const [query, setQuery] = useState('')
   const [status, setStatus] = useState('')
@@ -53,8 +56,9 @@ function TeamCustomersPage() {
   }
 
   useEffect(() => {
-    loadCustomers()
-  }, [])
+    if (isOwner) loadCustomers()
+    else setLoading(false)
+  }, [isOwner])
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -119,9 +123,13 @@ function TeamCustomersPage() {
         business_name: form.business_name.trim(),
         notes: form.notes.trim(),
       })
-      setCustomers((current) => [created, ...current])
       setForm(defaultForm)
-      setStatus('Customer added successfully.')
+      if (created.existing) {
+        setStatus(`That phone number already belongs to ${created.full_name}, so no new customer was added.`)
+        return
+      }
+      if (isOwner) setCustomers((current) => [created, ...current])
+      setStatus(`${created.full_name} added.`)
     } catch (error) {
       setStatus(`Could not create customer: ${error.message}`)
     }
@@ -131,7 +139,10 @@ function TeamCustomersPage() {
     <>
       <TeamNavbar />
       <main className="bg-[#F4F8FC]">
-        <TeamPageHeader title="Customers" subtitle="Find a customer, see their jobs, or add someone new." />
+        <TeamPageHeader
+          title="Customers"
+          subtitle={isOwner ? 'Find a customer, see their jobs, or add someone new.' : 'Add a new customer.'}
+        />
 
         <section className="container-shell py-8 md:py-10">
           {status ? (
@@ -140,7 +151,7 @@ function TeamCustomersPage() {
             </div>
           ) : null}
 
-          <div className="grid gap-6 xl:grid-cols-[1fr_1fr]">
+          <div className={isOwner ? 'grid gap-6 xl:grid-cols-[1fr_1fr]' : 'mx-auto max-w-2xl'}>
             <section className="border border-slate-200 bg-white p-5 shadow-sm md:p-6">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
@@ -254,6 +265,7 @@ function TeamCustomersPage() {
               </form>
             </section>
 
+            {isOwner ? (
             <section className="space-y-6">
               <div className="border border-slate-200 bg-white p-5 shadow-sm md:p-6">
                 <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
@@ -328,8 +340,10 @@ function TeamCustomersPage() {
                 </div>
               </div>
             </section>
+            ) : null}
           </div>
 
+          {isOwner ? (
           <section className="mt-8 border border-slate-200 bg-white p-5 shadow-sm md:p-6">
             <button
               type="button"
@@ -447,6 +461,7 @@ function TeamCustomersPage() {
               </div>
             )}
           </section>
+          ) : null}
         </section>
       </main>
     </>

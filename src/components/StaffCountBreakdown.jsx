@@ -19,8 +19,9 @@ function paymentLabel(payment) {
 }
 
 // For the owner: each person's day itemised, i.e. what they counted against every payment,
-// photocopy session and takings expense behind the CMS figure.
-function StaffCountBreakdown({ counts, payments, sessions, expenses, loading, initialOpenId = null }) {
+// photocopy session behind the CMS figure. Staff count everything they collected, before any
+// expenses were paid out of it, so their count should equal what they recorded.
+function StaffCountBreakdown({ counts, payments, sessions, loading, initialOpenId = null }) {
   const [openId, setOpenId] = useState(initialOpenId)
 
   const people = useMemo(() => {
@@ -28,7 +29,7 @@ function StaffCountBreakdown({ counts, payments, sessions, expenses, loading, in
     const personFor = (id, name) => {
       const key = id ?? `name:${name}`
       if (!map.has(key)) {
-        map.set(key, { key, id, name: name || 'Unknown', count: null, payments: [], sessions: [], spent: [] })
+        map.set(key, { key, id, name: name || 'Unknown', count: null, payments: [], sessions: [] })
       }
       const person = map.get(key)
       if (!person.name || person.name === 'Unknown') person.name = name || person.name
@@ -37,28 +38,24 @@ function StaffCountBreakdown({ counts, payments, sessions, expenses, loading, in
     for (const count of counts) personFor(count.staffId, count.staffName).count = count
     for (const payment of payments) personFor(payment.recordedById, payment.recordedByName).payments.push(payment)
     for (const session of sessions) personFor(session.staffId, session.staffName).sessions.push(session)
-    for (const expense of expenses) {
-      if (expense.paidFromTakings) personFor(expense.recordedById, expense.recordedByName).spent.push(expense)
-    }
 
     return [...map.values()]
       .map((person) => {
         const paymentTotal = person.payments.reduce((sum, item) => sum + item.amount, 0)
         const copyTotal = person.sessions.reduce((sum, item) => sum + item.actualCashCollected, 0)
-        const spentTotal = person.spent.reduce((sum, item) => sum + item.amount, 0)
         const recorded = paymentTotal + copyTotal
-        const expected = recorded - spentTotal
+        const expected = recorded
         const counted = person.count ? person.count.countedTotal : null
         const difference = counted === null ? null : counted - expected
-        return { ...person, paymentTotal, copyTotal, spentTotal, recorded, expected, counted, difference }
+        return { ...person, paymentTotal, copyTotal, recorded, expected, counted, difference }
       })
-      .filter((person) => person.count || person.recorded || person.spentTotal)
+      .filter((person) => person.count || person.recorded)
       .sort((a, b) => {
         // Problems first: short, then not counted, then over, then matching.
         const rank = (p) => (p.difference === null ? 1 : p.difference < -0.005 ? 0 : p.difference > 0.005 ? 2 : 3)
         return rank(a) - rank(b) || a.name.localeCompare(b.name)
       })
-  }, [counts, expenses, payments, sessions])
+  }, [counts, payments, sessions])
 
   return (
     <section className="border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
@@ -154,29 +151,10 @@ function StaffCountBreakdown({ counts, payments, sessions, expenses, loading, in
                       </div>
                     ) : null}
 
-                    {person.spent.length ? (
-                      <div>
-                        <p className="font-bold text-slate-900">
-                          Spent from takings ({person.spent.length}) · −{formatCurrency(person.spentTotal)}
-                        </p>
-                        <ul className="mt-1 divide-y divide-slate-200 border border-slate-200 bg-white">
-                          {person.spent.map((expense) => (
-                            <li key={expense.id} className="flex justify-between gap-3 px-3 py-2">
-                              <span>
-                                {expense.description} <span className="text-slate-500">· {expense.categoryLabel}</span>
-                              </span>
-                              <span className="shrink-0 font-semibold">−{formatCurrency(expense.amount)}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    ) : null}
-
                     <div className="border-t border-slate-300 pt-3 text-slate-800">
                       <p>
-                        Recorded {formatCurrency(person.recorded)}
-                        {person.spentTotal ? ` − spent ${formatCurrency(person.spentTotal)}` : ''} ={' '}
-                        <span className="font-bold">expected {formatCurrency(person.expected)}</span>
+                        Recorded in the CMS: <span className="font-bold">{formatCurrency(person.recorded)}</span> (what they
+                        should have counted)
                       </p>
                       <p className={`mt-1 font-bold ${status.className}`}>
                         {person.counted === null

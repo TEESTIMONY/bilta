@@ -61,7 +61,7 @@ function App() {
           {teamEditorEnabled ? <Route path="/team/orders" element={<TeamRouteGuard><TeamOrdersDashboard /></TeamRouteGuard>} /> : null}
           {teamEditorEnabled ? <Route path="/team/records" element={<TeamRouteGuard><TeamOperationsPage /></TeamRouteGuard>} /> : null}
           {teamEditorEnabled ? <Route path="/team/reports" element={<TeamRouteGuard ownerOnly><TeamOwnerReportsPage /></TeamRouteGuard>} /> : null}
-          {teamEditorEnabled ? <Route path="/team/expenses" element={<TeamRouteGuard><TeamExpensesPage /></TeamRouteGuard>} /> : null}
+          {teamEditorEnabled ? <Route path="/team/expenses" element={<TeamRouteGuard ownerOnly><TeamExpensesPage /></TeamRouteGuard>} /> : null}
           {teamEditorEnabled ? <Route path="/team/settings" element={<TeamRouteGuard ownerOnly><TeamSettingsPage /></TeamRouteGuard>} /> : null}
           {teamEditorEnabled ? <Route path="/team/customers" element={<TeamRouteGuard><TeamCustomersPage /></TeamRouteGuard>} /> : null}
           {teamEditorEnabled ? <Route path="/team/products-editor" element={<TeamRouteGuard ownerOnly><TeamProductsEditor /></TeamRouteGuard>} /> : null}
