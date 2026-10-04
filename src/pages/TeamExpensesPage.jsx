@@ -350,7 +350,17 @@ function TeamExpensesPage() {
             </p>
           ) : null}
 
-          {view === 'day' ? (
+          {view === 'day' && !isOwner ? (
+            // Staff: the form and their own list side by side on wide screens.
+            <div className="mt-4 grid gap-4 lg:grid-cols-2 lg:items-start">
+              {expenseForm || (
+                <p className="border border-slate-200 bg-white p-4 text-sm text-slate-600">
+                  You can only add expenses for today.
+                </p>
+              )}
+              {expenseList}
+            </div>
+          ) : view === 'day' ? (
             <div className="mt-4 grid gap-4 lg:grid-cols-2 lg:items-start">
               <div className="space-y-4">
                 {expenseForm}
