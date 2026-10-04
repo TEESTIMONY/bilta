@@ -151,7 +151,7 @@ function TeamCustomersPage() {
             </div>
           ) : null}
 
-          <div className={isOwner ? 'grid gap-6 xl:grid-cols-[1fr_1fr]' : 'max-w-2xl'}>
+          <div className={isOwner ? 'grid gap-6 xl:grid-cols-[1fr_1fr]' : 'mx-auto max-w-2xl'}>
             <section className="border border-slate-200 bg-white p-5 shadow-sm md:p-6">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
