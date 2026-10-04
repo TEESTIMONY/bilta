@@ -8,6 +8,7 @@ import TeamNavbar from '../components/TeamNavbar'
 import { useAuth } from '../context/authContext'
 import { getCustomersData } from '../services/customersService'
 import { getSystemSetting } from '../services/operationsService'
+import { staffCanChangeStatus, statusOptionsFor } from '../utils/jobStatus'
 import { createPaymentRecord } from '../services/operationsService'
 import {
   getDailySummary,
@@ -15,15 +16,6 @@ import {
   getJobsQueueData,
   updateOrderQuickFields,
 } from '../services/ordersService'
-
-const orderStatusOptions = [
-  'pending',
-  'in_progress',
-  'ready_for_pickup',
-  'awaiting_delivery',
-  'completed',
-  'cancelled',
-]
 
 const queueViewOptions = [
   { value: 'needs_attention', label: 'Needs attention' },
@@ -1087,13 +1079,16 @@ function TeamOrdersDashboard() {
                     <div className="mt-4 flex flex-col items-stretch gap-3 border-t border-slate-200 pt-4 sm:flex-row sm:items-center sm:justify-between">
                       <div className="text-sm font-semibold text-slate-600">
                         Status: <span className="text-slate-900">{titleCase(order.status)}</span>
+                        {!isOwner ? <p className="text-xs text-slate-500">Only the owner can mark a job Completed or Cancelled.</p> : null}
                       </div>
                       <select
                         value={order.status}
                         onChange={(e) => handleStatusChange(order.id, e.target.value)}
-                        className="w-full border border-slate-300 bg-white px-3 py-2 text-sm font-semibold outline-none transition focus:border-navy sm:w-auto"
+                        disabled={!staffCanChangeStatus(isOwner, order.status)}
+                        aria-label={`Status for job #${order.id}`}
+                        className="min-h-[44px] w-full border border-slate-300 bg-white px-3 text-sm font-semibold outline-none transition focus:border-navy disabled:bg-slate-100 disabled:opacity-70 sm:w-auto"
                       >
-                        {orderStatusOptions.map((status) => (
+                        {statusOptionsFor(isOwner, order.status).map((status) => (
                           <option key={status} value={status}>
                             {titleCase(status)}
                           </option>

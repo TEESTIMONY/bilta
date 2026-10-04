@@ -18,15 +18,7 @@ import {
   getSystemSetting,
   updateSystemSetting,
 } from '../services/operationsService'
-
-const jobStatusOptions = [
-  'pending',
-  'in_progress',
-  'ready_for_pickup',
-  'awaiting_delivery',
-  'completed',
-  'cancelled',
-]
+import { staffCanChangeStatus, statusOptionsFor } from '../utils/jobStatus'
 
 const defaultPhotocopyForm = {
   openingReading: '',
@@ -558,12 +550,12 @@ function TeamOperationsPage() {
                             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                               <select
                                 value={job.status}
-                                disabled={savingJobId === job.id}
+                                disabled={savingJobId === job.id || !staffCanChangeStatus(isOwner, job.status)}
                                 onChange={(e) => handleJobStatusChange(job.id, e.target.value)}
                                 aria-label={`Status for job #${job.id}`}
                                 className="min-h-[44px] w-full border border-slate-300 bg-white px-3 text-sm font-semibold outline-none transition focus:border-navy disabled:opacity-60 sm:w-auto"
                               >
-                                {jobStatusOptions.map((status) => (
+                                {statusOptionsFor(isOwner, job.status).map((status) => (
                                   <option key={status} value={status}>
                                     {titleCase(status)}
                                   </option>
@@ -586,6 +578,9 @@ function TeamOperationsPage() {
                                 Open full details
                               </button>
                             </div>
+                            {!isOwner ? (
+                              <p className="text-xs text-slate-500">Only the owner can mark a job Completed or Cancelled.</p>
+                            ) : null}
                           </div>
                         ) : null}
                       </article>
