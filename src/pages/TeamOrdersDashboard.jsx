@@ -1126,6 +1126,7 @@ function TeamOrdersDashboard() {
           {user?.id ? (
             <EndOfDayCount
               userId={user.id}
+              isOwner={isOwner}
               refreshKey={`${dailySummary?.total_revenue ?? ''}-${dailySummary?.photocopy_revenue ?? ''}`}
             />
           ) : null}
