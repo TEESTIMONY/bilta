@@ -233,6 +233,7 @@ function TeamOwnerReportsPage() {
             : ''
         }.${count.note ? ` Note: ${count.note}` : ''}`,
         time: formatTime(count.updatedAt),
+        link: { label: 'See itemised count', to: `/team/expenses?date=${reportDate}&staff=${count.staffId}` },
       })
     }
     if (reportDate < getWATDateKey(new Date())) {
@@ -384,6 +385,14 @@ function TeamOwnerReportsPage() {
                           className="min-h-[44px] shrink-0 border border-slate-300 bg-white px-3 text-sm font-semibold text-navy transition hover:border-navy"
                         >
                           Open job #{item.jobId}
+                        </button>
+                      ) : item.link ? (
+                        <button
+                          type="button"
+                          onClick={() => navigate(item.link.to)}
+                          className="min-h-[44px] shrink-0 border border-slate-300 bg-white px-3 text-sm font-semibold text-navy transition hover:border-navy"
+                        >
+                          {item.link.label}
                         </button>
                       ) : null}
                     </li>

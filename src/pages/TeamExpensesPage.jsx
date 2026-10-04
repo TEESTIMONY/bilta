@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ChevronLeft, ChevronRight, Trash2 } from 'lucide-react'
+import { useSearchParams } from 'react-router-dom'
+import StaffCountBreakdown from '../components/StaffCountBreakdown'
 import TeamNavbar from '../components/TeamNavbar'
 import TeamPageHeader from '../components/TeamPageHeader'
 import { useAuth } from '../context/authContext'
@@ -10,8 +12,9 @@ import {
   getCashCounts,
   getExpenses,
   getMoneyStatement,
+  getPaymentRecordsData,
+  getPhotocopySessionsData,
 } from '../services/operationsService'
-import { countResult } from '../utils/cashCount'
 
 const inputClass =
   'mt-1 w-full min-h-[44px] border border-slate-300 bg-white px-3 text-[15px] outline-none transition focus:border-navy'
@@ -70,10 +73,16 @@ function dayLabel(key, options = { weekday: 'short', day: 'numeric', month: 'sho
 
 function TeamExpensesPage() {
   const { isOwner } = useAuth()
+  // ?date=YYYY-MM-DD&staff=<id> opens a day with one person's count already expanded (from Reports).
+  const [searchParams] = useSearchParams()
+  const linkedDay = /^\d{4}-\d{2}-\d{2}$/.test(searchParams.get('date') || '') ? searchParams.get('date') : null
+  const linkedStaff = searchParams.get('staff') ? Number(searchParams.get('staff')) : null
   const [view, setView] = useState('day')
-  const [selectedDay, setSelectedDay] = useState(todayKey())
+  const [selectedDay, setSelectedDay] = useState(linkedDay || todayKey())
   const [expenses, setExpenses] = useState([])
   const [counts, setCounts] = useState([])
+  const [dayPayments, setDayPayments] = useState([])
+  const [daySessions, setDaySessions] = useState([])
   const [statement, setStatement] = useState(null)
   const [form, setForm] = useState(emptyExpense)
   const [saving, setSaving] = useState(false)
@@ -90,14 +99,18 @@ function TeamExpensesPage() {
     setLoading(true)
     try {
       if (view === 'day') {
-        const [expenseData, countData, statementData] = await Promise.all([
+        const [expenseData, countData, statementData, paymentData, sessionData] = await Promise.all([
           getExpenses(selectedDay),
           isOwner ? getCashCounts(selectedDay) : Promise.resolve({ counts: [] }),
           isOwner ? getMoneyStatement(selectedDay, selectedDay) : Promise.resolve(null),
+          isOwner ? getPaymentRecordsData(selectedDay) : Promise.resolve({ payments: [] }),
+          isOwner ? getPhotocopySessionsData(selectedDay) : Promise.resolve({ sessions: [] }),
         ])
         setExpenses(expenseData.expenses)
         setCounts(countData.counts)
         setStatement(statementData)
+        setDayPayments(paymentData.payments)
+        setDaySessions(sessionData.sessions)
       } else {
         setStatement(await getMoneyStatement(range.start, range.end))
       }
@@ -367,38 +380,15 @@ function TeamExpensesPage() {
                 {expenseList}
               </div>
               {isOwner ? (
-                <section className="border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-                  <h2 className="text-lg font-extrabold text-navy">Staff counts</h2>
-                  {counts.length ? (
-                    <ul className="mt-2 divide-y divide-slate-200">
-                      {counts.map((count) => {
-                        const result = countResult(count)
-                        return (
-                          <li key={count.id} className="py-3">
-                            <div className="flex items-baseline justify-between gap-3">
-                              <p className="font-semibold text-slate-900">{count.staffName}</p>
-                              <p className="font-bold text-slate-900">{formatCurrency(count.countedTotal)}</p>
-                            </div>
-                            <p className="text-sm text-slate-600">
-                              Cash {formatCurrency(count.cashAmount)} + transfers {formatCurrency(count.transferAmount)} ·{' '}
-                              <span
-                                className={
-                                  result.tone === 'ok' ? 'text-emerald-700' : result.tone === 'short' ? 'text-red-700' : 'text-amber-700'
-                                }
-                              >
-                                {result.tone === 'ok' ? '✓ matches the CMS' : result.label}
-                              </span>
-                            </p>
-                          </li>
-                        )
-                      })}
-                    </ul>
-                  ) : (
-                    <p className="mt-2 text-sm text-slate-500">
-                      {loading ? 'Loading...' : 'No end-of-day counts for this day yet. Staff do them on the Today page.'}
-                    </p>
-                  )}
-                </section>
+                <StaffCountBreakdown
+                  key={selectedDay}
+                  counts={counts}
+                  payments={dayPayments}
+                  sessions={daySessions}
+                  expenses={expenses}
+                  loading={loading}
+                  initialOpenId={selectedDay === linkedDay ? linkedStaff : null}
+                />
               ) : null}
             </div>
           ) : (

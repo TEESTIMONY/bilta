@@ -7,6 +7,8 @@ function normalizePayment(item) {
     jobId: item?.job || null,
     source: item?.source || 'job',
     recordedByName: item?.recorded_by_name || '',
+    recordedById: item?.recorded_by ?? null,
+    customerName: item?.customer_name || '',
     serviceLabel: item?.service_label || '',
     note: item?.note || '',
     createdAt: item?.created_at || '',
@@ -25,6 +27,7 @@ function normalizePhotocopySession(item) {
     revenueGap: Number(item?.revenue_gap || 0),
     hasDiscrepancy: Boolean(item?.has_discrepancy),
     staffName: item?.staff_name || '',
+    staffId: item?.staff ?? null,
     createdAt: item?.created_at || '',
   }
 }
@@ -175,6 +178,7 @@ function normalizeExpense(item) {
     categoryLabel: item?.category_label || item?.category || '',
     paidFromTakings: Boolean(item?.paid_from_takings),
     recordedByName: item?.recorded_by_name || '',
+    recordedById: item?.recorded_by ?? null,
     createdAt: item?.created_at || '',
   }
 }
