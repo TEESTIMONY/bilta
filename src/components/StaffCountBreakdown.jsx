@@ -38,7 +38,7 @@ function StaffCountBreakdown({ counts, payments, sessions, expenses, loading, in
     for (const payment of payments) personFor(payment.recordedById, payment.recordedByName).payments.push(payment)
     for (const session of sessions) personFor(session.staffId, session.staffName).sessions.push(session)
     for (const expense of expenses) {
-      if (expense.paidFromTakings) personFor(expense.recordedById, expense.recordedByName).spent.push(expense)
+      if (expense.paidFromTakings) personFor(expense.paidById, expense.paidByName).spent.push(expense)
     }
 
     return [...map.values()]

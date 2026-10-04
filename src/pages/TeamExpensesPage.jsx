@@ -5,6 +5,7 @@ import StaffCountBreakdown from '../components/StaffCountBreakdown'
 import TeamNavbar from '../components/TeamNavbar'
 import TeamPageHeader from '../components/TeamPageHeader'
 import { useAuth } from '../context/authContext'
+import { getStaffAccountsData } from '../services/authService'
 import {
   EXPENSE_CATEGORIES,
   createExpense,
@@ -19,7 +20,7 @@ import {
 const inputClass =
   'mt-1 w-full min-h-[44px] border border-slate-300 bg-white px-3 text-[15px] outline-none transition focus:border-navy'
 
-const emptyExpense = { category: 'fuel', description: '', amount: '', paidFromTakings: true }
+const emptyExpense = { category: 'fuel', description: '', amount: '', paidFromTakings: true, paidBy: '' }
 
 function formatCurrency(value) {
   return new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 }).format(
@@ -72,7 +73,7 @@ function dayLabel(key, options = { weekday: 'short', day: 'numeric', month: 'sho
 }
 
 function TeamExpensesPage() {
-  const { isOwner } = useAuth()
+  const { isOwner, user } = useAuth()
   // ?date=YYYY-MM-DD&staff=<id> opens a day with one person's count already expanded (from Reports).
   const [searchParams] = useSearchParams()
   const linkedDay = /^\d{4}-\d{2}-\d{2}$/.test(searchParams.get('date') || '') ? searchParams.get('date') : null
@@ -85,6 +86,20 @@ function TeamExpensesPage() {
   const [daySessions, setDaySessions] = useState([])
   const [statement, setStatement] = useState(null)
   const [form, setForm] = useState(emptyExpense)
+  const [people, setPeople] = useState([])
+
+  useEffect(() => {
+    // Who can have spent from their takings: active staff and owners.
+    getStaffAccountsData()
+      .then(({ accounts }) =>
+        setPeople(
+          accounts
+            .filter((account) => account.is_active)
+            .map((account) => ({ id: account.id, name: account.display_name || account.username })),
+        ),
+      )
+      .catch(() => setPeople([]))
+  }, [])
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
   const [message, setMessage] = useState('')
@@ -146,6 +161,7 @@ function TeamExpensesPage() {
         description: form.description.trim(),
         amount: form.amount,
         paidFromTakings: form.paidFromTakings,
+        paidBy: form.paidBy,
       })
       setForm(emptyExpense)
       setMessage(`Expense of ${formatCurrency(form.amount)} saved.`)
@@ -239,6 +255,28 @@ function TeamExpensesPage() {
           another way, e.g. from the bank.
         </span>
       </label>
+      {form.paidFromTakings ? (
+        <label className="mt-2 block text-sm font-semibold text-slate-700 sm:max-w-xs">
+          Whose takings?
+          <select
+            value={form.paidBy}
+            onChange={(e) => setForm((current) => ({ ...current, paidBy: e.target.value }))}
+            className={inputClass}
+          >
+            <option value="">Mine</option>
+            {people
+              .filter((person) => person.id !== user?.id)
+              .map((person) => (
+                <option key={person.id} value={person.id}>
+                  {person.name}
+                </option>
+              ))}
+          </select>
+          <span className="mt-1 block text-xs font-normal text-slate-500">
+            Their end-of-day count will allow for this.
+          </span>
+        </label>
+      ) : null}
       <button type="submit" disabled={saving} className="btn-primary mt-3 min-h-[44px] w-full disabled:opacity-60 sm:w-auto">
         {saving ? 'Saving...' : 'Save expense'}
       </button>
@@ -260,7 +298,7 @@ function TeamExpensesPage() {
                 <p className="text-sm text-slate-600">
                   {expense.categoryLabel}
                   {isOwner && expense.recordedByName ? ` · ${expense.recordedByName}` : ''}
-                  {expense.paidFromTakings ? ' · from takings' : ' · paid another way'}
+                  {expense.paidFromTakings ? ` · from ${expense.paidByName || 'someone'}'s takings` : ' · paid another way'}
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-2">

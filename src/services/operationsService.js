@@ -179,6 +179,8 @@ function normalizeExpense(item) {
     paidFromTakings: Boolean(item?.paid_from_takings),
     recordedByName: item?.recorded_by_name || '',
     recordedById: item?.recorded_by ?? null,
+    paidById: item?.paid_by ?? item?.recorded_by ?? null,
+    paidByName: item?.paid_by_name || item?.recorded_by_name || '',
     createdAt: item?.created_at || '',
   }
 }
@@ -190,7 +192,7 @@ export async function getExpenses(date) {
   return { expenses: expenses.map(normalizeExpense), source: 'django' }
 }
 
-export async function createExpense({ date, category, description, amount, paidFromTakings }) {
+export async function createExpense({ date, category, description, amount, paidFromTakings, paidBy }) {
   const created = await fetchJson(`${DJANGO_API_BASE}/expenses/`, {
     method: 'POST',
     body: JSON.stringify({
@@ -199,6 +201,7 @@ export async function createExpense({ date, category, description, amount, paidF
       description,
       amount: String(Number(amount)),
       paid_from_takings: Boolean(paidFromTakings),
+      ...(paidFromTakings && paidBy ? { paid_by: Number(paidBy) } : {}),
     }),
   })
   return normalizeExpense(created)

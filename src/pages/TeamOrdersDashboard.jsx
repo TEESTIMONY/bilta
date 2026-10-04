@@ -171,7 +171,7 @@ function TeamOrdersDashboard() {
     try {
       const [queueData, customerData, summaryData, linkedJobResults] = await Promise.all([
         getJobsQueueData(),
-        getCustomersData(),
+        isOwner ? getCustomersData() : Promise.resolve({ customers: [] }),
         getDailySummary(date),
         Promise.allSettled(linkedJobIds.map((jobId) => getJob(jobId))),
       ])
@@ -193,7 +193,7 @@ function TeamOrdersDashboard() {
     } finally {
       setLoading(false)
     }
-  }, [linkedJobIds, summaryDate])
+  }, [isOwner, linkedJobIds, summaryDate])
 
   useEffect(() => {
     loadDashboard(summaryDate)

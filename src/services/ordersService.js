@@ -110,27 +110,7 @@ export async function createJob(payload) {
   return normalizeOrder(created)
 }
 
+// The one shared customer record for anonymous walk-in jobs (found or created by the server).
 export async function ensureWalkInCustomer() {
-  const customers = await fetchAllPages(`${DJANGO_API_BASE}/customers/`)
-  // One shared record for anonymous walk-ins. Older desk versions created "Walk-in Customer"
-  // records, so reuse those too instead of adding another.
-  const existing = customers.find(
-    (customer) =>
-      customer?.customer_type === 'walk_in' &&
-      ['walk-in', 'walk-in customer'].includes(String(customer?.full_name || '').trim().toLowerCase()) &&
-      !String(customer?.phone || '').trim(),
-  )
-
-  if (existing?.id) {
-    return existing
-  }
-
-  return fetchJson(`${DJANGO_API_BASE}/customers/`, {
-    method: 'POST',
-    body: JSON.stringify({
-      full_name: 'Walk-in',
-      customer_type: 'walk_in',
-      notes: 'Generic walk-in customer record for quick counter jobs.',
-    }),
-  })
+  return fetchJson(`${DJANGO_API_BASE}/customers/walk-in/`, { method: 'POST', body: JSON.stringify({}) })
 }
