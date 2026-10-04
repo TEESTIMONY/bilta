@@ -26,6 +26,7 @@ const TeamLoginPage = lazy(() => import('./pages/TeamLoginPage'))
 const TeamInviteAcceptPage = lazy(() => import('./pages/TeamInviteAcceptPage'))
 const TeamSettingsPage = lazy(() => import('./pages/TeamSettingsPage'))
 const TeamExpensesPage = lazy(() => import('./pages/TeamExpensesPage'))
+const TeamStaffPage = lazy(() => import('./pages/TeamStaffPage'))
 
 const teamEditorEnabled = import.meta.env.VITE_ENABLE_TEAM_EDITOR === 'true'
 
@@ -62,6 +63,7 @@ function App() {
           {teamEditorEnabled ? <Route path="/team/records" element={<TeamRouteGuard><TeamOperationsPage /></TeamRouteGuard>} /> : null}
           {teamEditorEnabled ? <Route path="/team/reports" element={<TeamRouteGuard ownerOnly><TeamOwnerReportsPage /></TeamRouteGuard>} /> : null}
           {teamEditorEnabled ? <Route path="/team/expenses" element={<TeamRouteGuard ownerOnly><TeamExpensesPage /></TeamRouteGuard>} /> : null}
+          {teamEditorEnabled ? <Route path="/team/staff" element={<TeamRouteGuard><TeamStaffPage /></TeamRouteGuard>} /> : null}
           {teamEditorEnabled ? <Route path="/team/settings" element={<TeamRouteGuard ownerOnly><TeamSettingsPage /></TeamRouteGuard>} /> : null}
           {teamEditorEnabled ? <Route path="/team/customers" element={<TeamRouteGuard><TeamCustomersPage /></TeamRouteGuard>} /> : null}
           {teamEditorEnabled ? <Route path="/team/products-editor" element={<TeamRouteGuard ownerOnly><TeamProductsEditor /></TeamRouteGuard>} /> : null}

@@ -107,7 +107,7 @@ function describeActivity(entry) {
         : 'logged a photocopy session'
     case 'DailyCashCount:create':
     case 'DailyCashCount:update':
-      return `${entry.action === 'update' ? 'recounted' : 'did the end-of-day count'}: cash ${formatCurrency(m.cash)} + transfers ${formatCurrency(
+      return `${entry.action === 'update' ? 'recounted' : 'entered the end-of-day count'} for the shop: cash ${formatCurrency(m.cash)} + transfers ${formatCurrency(
         m.transfer,
       )}${Number(m.difference) ? ` (${Number(m.difference) < 0 ? `${formatCurrency(-Number(m.difference))} short` : `${formatCurrency(m.difference)} over`})` : ' (matched)'}`
     case 'StaffAccount:update':
@@ -224,26 +224,16 @@ function TeamOwnerReportsPage() {
       if (result.tone === 'ok') continue
       items.push({
         key: `count-${count.id}`,
-        text: `${count.staffName}'s end-of-day count is ${result.label}.`,
+        text: `The shop end-of-day count is ${result.label}.`,
         detail: `Cash ${formatCurrency(count.cashAmount)} + transfers ${formatCurrency(count.transferAmount)} = ${formatCurrency(
           count.countedTotal,
         )}, but the CMS recorded ${formatCurrency(count.recordedTotal)}.${count.note ? ` Note: ${count.note}` : ''}`,
         time: formatTime(count.updatedAt),
-        link: { label: 'See itemised count', to: `/team/expenses?date=${reportDate}&staff=${count.staffId}` },
+        link: { label: 'See itemised count', to: `/team/expenses?date=${reportDate}` },
       })
     }
-    if (reportDate < getWATDateKey(new Date())) {
-      const counted = new Set(cashCounts.map((count) => count.staffName))
-      const tookMoney = new Set(
-        [
-          ...payments.filter((payment) => Number(payment.amount) > 0).map((payment) => payment.recordedByName),
-          ...sessions.filter((session) => Number(session.actualCashCollected) > 0).map((session) => session.staffName),
-        ].filter(Boolean),
-      )
-      for (const name of tookMoney) {
-        if (counted.has(name)) continue
-        items.push({ key: `nocount-${name}`, text: `${name} took money but didn't do an end-of-day count.` })
-      }
+    if (reportDate < getWATDateKey(new Date()) && !cashCounts.length && (payments.length || sessions.length)) {
+      items.push({ key: 'no-shop-count', text: 'The shop has collections but no end-of-day total has been entered.' })
     }
     for (const session of sessions) {
       const gap = Number(session.revenueGap || 0)
@@ -336,6 +326,11 @@ function TeamOwnerReportsPage() {
         </TeamPageHeader>
 
         <section className="container-shell py-6">
+          {cashCounts[0] ? <div className="mb-5 border border-slate-200 bg-white p-4">
+            <h2 className="font-extrabold text-navy">Shop end-of-day total</h2>
+            <p className="mt-1 text-sm">Cash {formatCurrency(cashCounts[0].cashAmount)} + transfers {formatCurrency(cashCounts[0].transferAmount)} = <strong>{formatCurrency(cashCounts[0].countedTotal)}</strong></p>
+            <p className="mt-1 text-sm">{countResult(cashCounts[0]).label} | Recorded collections {formatCurrency(cashCounts[0].recordedTotal)}</p>
+          </div> : null}
           {statusMessage ? (
             <div className="mb-5 border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{statusMessage}</div>
           ) : null}
@@ -411,25 +406,6 @@ function TeamOwnerReportsPage() {
                         <p className="font-bold text-slate-900">{person.name}</p>
                         <p className="text-sm font-semibold text-slate-700">{formatCurrency(person.takenTotal)} taken</p>
                       </div>
-                      {(() => {
-                        const count = cashCounts.find((item) => item.staffName === person.name)
-                        if (!count) {
-                          return person.takenTotal > 0 ? (
-                            <p className="mt-0.5 text-sm font-semibold text-slate-500">End-of-day count: not done</p>
-                          ) : null
-                        }
-                        const result = countResult(count)
-                        return (
-                          <p
-                            className={`mt-0.5 text-sm font-semibold ${
-                              result.tone === 'ok' ? 'text-emerald-700' : result.tone === 'short' ? 'text-red-700' : 'text-amber-700'
-                            }`}
-                          >
-                            End-of-day count: {result.tone === 'ok' ? '✓ matches' : result.label} (cash {formatCurrency(count.cashAmount)} +
-                            transfers {formatCurrency(count.transferAmount)})
-                          </p>
-                        )
-                      })()}
                       <p className="mt-0.5 text-sm text-slate-600">
                         {[
                           person.jobs ? `${person.jobs} job${person.jobs === 1 ? '' : 's'} added` : '',

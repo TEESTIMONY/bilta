@@ -142,6 +142,13 @@ function compareDeskOrders(left, right) {
   return getTimestamp(right.updated_at, right.created_at) - getTimestamp(left.updated_at, left.created_at)
 }
 
+function formatCorrectionValue(value) {
+  if (Array.isArray(value)) {
+    return value.map((line) => `${line.description}: ${line.quantity} x ${formatCurrency(line.rate)}`).join('; ') || 'No items'
+  }
+  return value === 'None' || value === '' ? 'None' : String(value)
+}
+
 function TeamOrdersDashboard() {
   const { isOwner, user } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -238,6 +245,10 @@ function TeamOrdersDashboard() {
             unitPrice: String(Number(order.unitPrice || 0)),
             amountPaid: String(Number(order.amountPaid || 0)),
             deadline: toDateTimeLocalValue(order.deadline),
+            description: order.description || '',
+            specialInstructions: order.specialInstructions || '',
+            projectScopeNote: order.projectScopeNote || '',
+            items: (order.items || []).map((line) => ({ description: line.description, quantity: String(line.quantity), rate: String(line.rate) })),
           },
         ]),
       ),
@@ -438,6 +449,16 @@ function TeamOrdersDashboard() {
           payload.unit_price = String(nextUnitPrice)
         }
         payload.amount_paid = String(nextAmountPaid)
+        payload.description = draft.description
+        payload.special_instructions = draft.specialInstructions
+        payload.project_scope_note = draft.projectScopeNote
+        if (order.items?.length) {
+          if (draft.items.some((line) => !line.description.trim() || !Number.isInteger(Number(line.quantity)) || Number(line.quantity) < 1 || !Number.isFinite(Number(line.rate)) || Number(line.rate) < 0)) {
+            setStatusMessage('Each item needs a description, a whole quantity of at least 1, and a non-negative rate.')
+            return
+          }
+          payload.items = draft.items.map((line) => ({ description: line.description.trim(), quantity: Number(line.quantity), rate: String(Number(line.rate)) }))
+        }
       }
 
       await updateOrderQuickFields(order.id, payload)
@@ -642,7 +663,7 @@ function TeamOrdersDashboard() {
                     deadline: toDateTimeLocalValue(order.deadline),
                   }
                   const draftTotal = order.items?.length
-                    ? Number(order.totalAmount || 0)
+                    ? (queueDraft.items || order.items).reduce((sum, line) => sum + Number(line.quantity) * Number(line.rate), 0)
                     : Math.max(1, Number(queueDraft.quantity || 1)) * Number(queueDraft.unitPrice || 0)
                   const draftBalance = Math.max(
                     0,
@@ -704,6 +725,11 @@ function TeamOrdersDashboard() {
                             {order.jobType && order.jobType !== 'walk_in' ? `${titleCase(order.jobType)} · ` : ''}
                             {order.description || 'No description added.'}
                           </p>
+                          {isOwner && order.editHistory?.length > 0 ? (
+                            <span className="mt-2 inline-block border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-900">
+                              Edited by {order.editHistory[0].edited_by} | {formatDateTime(order.editHistory[0].edited_at)}
+                            </span>
+                          ) : null}
                           {order.deadline || order.discountAmount > 0 ? (
                             <p className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-600">
                               {order.deadline ? <span>Due {formatDateTime(order.deadline)}</span> : null}
@@ -947,6 +973,23 @@ function TeamOrdersDashboard() {
                       })()
                     ) : null}
 
+                    {isOwner && order.editHistory?.length > 0 ? (
+                      <details className="mt-4 border border-amber-200 bg-amber-50 p-4">
+                        <summary className="cursor-pointer font-semibold">Edit history ({order.editHistory.length})</summary>
+                        {order.editHistory.map((entry) => (
+                          <div key={entry.id} className="mt-3 border-t border-amber-200 pt-3 text-sm">
+                            <p className="font-semibold">{entry.edited_by} | {formatDateTime(entry.edited_at)}</p>
+                            {Object.entries(entry.changes).map(([field, change]) => (
+                              <div key={field} className="mt-2">
+                                <p className="font-semibold">{titleCase(field)}</p>
+                                <p className="whitespace-pre-wrap break-words">Before: {formatCorrectionValue(change.before)}</p>
+                                <p className="whitespace-pre-wrap break-words">After: {formatCorrectionValue(change.after)}</p>
+                              </div>
+                            ))}
+                          </div>
+                        ))}
+                      </details>
+                    ) : null}
                     {isOwner ? (
                       <div className="mt-4 border border-slate-200 bg-slate-50 px-4 py-4">
                         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -955,11 +998,33 @@ function TeamOrdersDashboard() {
                               Owner only
                             </p>
                             <h4 className="mt-1 text-base font-extrabold text-slate-900">
-                              Change prices, amount paid or deadline
+                              Edit job order
                             </h4>
                           </div>
                         </div>
 
+                        <div className="mt-4 space-y-3">
+                          {[
+                            ['description', 'Job description'],
+                            ['specialInstructions', 'Instructions'],
+                            ['projectScopeNote', 'Project details'],
+                          ].map(([field, label]) => (
+                            <label key={field} className="block text-sm font-semibold text-slate-700">
+                              {label}
+                              <textarea value={queueDraft[field] || ''} onChange={(e) => updateQueueEdit(order.id, field, e.target.value)} className="mt-1 w-full border border-slate-300 bg-white p-2" />
+                            </label>
+                          ))}
+                          {queueDraft.items?.map((line, index) => (
+                            <div key={index} className="grid gap-2 sm:grid-cols-3">
+                              {['description', 'quantity', 'rate'].map((field) => (
+                                <label key={field} className="text-sm font-semibold text-slate-700">
+                                  Item {index + 1}: {field === 'rate' ? 'unit price' : field}
+                                  <input type={field === 'description' ? 'text' : 'number'} min={field === 'quantity' ? '1' : '0'} step={field === 'rate' ? '0.01' : '1'} value={line[field]} onChange={(e) => updateQueueEdit(order.id, 'items', queueDraft.items.map((item, i) => i === index ? { ...item, [field]: e.target.value } : item))} className="mt-1 w-full border border-slate-300 bg-white p-2" />
+                                </label>
+                              ))}
+                            </div>
+                          ))}
+                        </div>
                         <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                         {order.items?.length ? null : (
                           <>
@@ -1018,7 +1083,7 @@ function TeamOrdersDashboard() {
 
                         <div className="mt-4 flex flex-col items-stretch gap-3 border-t border-slate-200 pt-4 sm:flex-row sm:items-center sm:justify-between">
                           <p className="text-sm text-slate-600">
-                            Project details stay visible here while you adjust quantity, payment, and due date.
+                            Corrections are recorded with your name, time, and the original values.
                           </p>
                           <button
                             type="button"
@@ -1026,7 +1091,7 @@ function TeamOrdersDashboard() {
                             disabled={savingOrderId === order.id}
                             className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
                           >
-                            {savingOrderId === order.id ? 'Saving...' : 'Save Queue Details'}
+                            {savingOrderId === order.id ? 'Saving...' : 'Save corrections'}
                           </button>
                         </div>
                       </div>
@@ -1140,10 +1205,8 @@ function TeamOrdersDashboard() {
               </div>
           </section>
 
-          {user?.id ? (
+          {isOwner && user?.id ? (
             <EndOfDayCount
-              userId={user.id}
-              isOwner={isOwner}
               refreshKey={`${dailySummary?.total_revenue ?? ''}-${dailySummary?.photocopy_revenue ?? ''}`}
             />
           ) : null}
