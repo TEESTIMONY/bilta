@@ -3,11 +3,12 @@ import { ChevronDown, Plus, Search, X } from 'lucide-react'
 import { Link, useSearchParams } from 'react-router-dom'
 import EndOfDayCount from '../components/EndOfDayCount'
 import JobOrderForm from '../components/JobOrderForm'
+import StaffMoneyBreakdown from '../components/StaffMoneyBreakdown'
 import TeamPageHeader from '../components/TeamPageHeader'
 import TeamNavbar from '../components/TeamNavbar'
 import { useAuth } from '../context/authContext'
 import { getCustomersData } from '../services/customersService'
-import { getSystemSetting } from '../services/operationsService'
+import { getPaymentRecordsData, getPhotocopySessionsData, getSystemSetting } from '../services/operationsService'
 import { staffCanChangeStatus, statusOptionsFor } from '../utils/jobStatus'
 import { createPaymentRecord } from '../services/operationsService'
 import {
@@ -146,6 +147,8 @@ function TeamOrdersDashboard() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [orders, setOrders] = useState([])
   const [customers, setCustomers] = useState([])
+  const [dayPayments, setDayPayments] = useState([])
+  const [daySessions, setDaySessions] = useState([])
   const [dailySummary, setDailySummary] = useState(null)
   const [loading, setLoading] = useState(true)
   const [savingOrderId, setSavingOrderId] = useState(null)
@@ -169,11 +172,14 @@ function TeamOrdersDashboard() {
   const loadDashboard = useCallback(async (date = summaryDate) => {
     setLoading(true)
     try {
-      const [queueData, customerData, summaryData, linkedJobResults] = await Promise.all([
+      const [queueData, customerData, summaryData, linkedJobResults, paymentData, sessionData] = await Promise.all([
         getJobsQueueData(),
         isOwner ? getCustomersData() : Promise.resolve({ customers: [] }),
         getDailySummary(date),
         Promise.allSettled(linkedJobIds.map((jobId) => getJob(jobId))),
+        // The owner's per-staff breakdown of today's money.
+        isOwner ? getPaymentRecordsData(date) : Promise.resolve({ payments: [] }),
+        isOwner ? getPhotocopySessionsData(date) : Promise.resolve({ sessions: [] }),
       ])
 
       const seenIds = new Set(queueData.orders.map((order) => order.id))
@@ -188,6 +194,8 @@ function TeamOrdersDashboard() {
       setOrders([...queueData.orders, ...linkedJobs])
       setCustomers(customerData.customers)
       setDailySummary(summaryData.summary)
+      setDayPayments(paymentData.payments)
+      setDaySessions(sessionData.sessions)
     } catch (error) {
       setStatusMessage(`Failed to load desk dashboard: ${error.message}`)
     } finally {
@@ -540,8 +548,17 @@ function TeamOrdersDashboard() {
             <SummaryStat label="Jobs today" value={todaySummary.jobs} />
             <SummaryStat label="Still to do" value={todaySummary.toDo} />
             <SummaryStat label="Owed on today's jobs" value={formatCurrency(todaySummary.owed)} alert={todaySummary.owed > 0} />
-            <SummaryStat label="Paid in today" value={formatCurrency(dailySummary?.total_revenue ?? 0)} />
+            <SummaryStat
+              label="Collected today"
+              value={formatCurrency(Number(dailySummary?.total_revenue ?? 0) + Number(dailySummary?.photocopy_revenue ?? 0))}
+            />
           </div>
+
+          {isOwner ? (
+            <div className="mt-5">
+              <StaffMoneyBreakdown payments={dayPayments} sessions={daySessions} title="Collected today, by staff" loading={loading} />
+            </div>
+          ) : null}
 
           {showNewJob ? (
             <section id="new-job" className="mt-5 border border-slate-200 bg-white p-5 shadow-sm md:p-6">

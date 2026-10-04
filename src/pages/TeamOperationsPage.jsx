@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ChevronDown } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
+import StaffMoneyBreakdown from '../components/StaffMoneyBreakdown'
 import TeamPageHeader from '../components/TeamPageHeader'
 import TeamNavbar from '../components/TeamNavbar'
 import { useAuth } from '../context/authContext'
@@ -416,6 +417,17 @@ function TeamOperationsPage() {
               {dailySummary.anomalies.photocopy_discrepancies} photocopy session
               {dailySummary.anomalies.photocopy_discrepancies === 1 ? '' : 's'} on this day had cash that didn&apos;t match the copies.
             </p>
+          ) : null}
+
+          {isOwner ? (
+            <div className="mt-4">
+              <StaffMoneyBreakdown
+                payments={selectedDatePayments}
+                sessions={selectedDateSessions}
+                title="Collected, by staff"
+                loading={loading}
+              />
+            </div>
           ) : null}
 
           <div role="tablist" aria-label="Records" className="mt-5 grid grid-cols-3 gap-2">
