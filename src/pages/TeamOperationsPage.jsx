@@ -497,6 +497,7 @@ function TeamOperationsPage() {
                             <p className="truncate text-sm text-slate-600">
                               {job.description || titleCase(job.jobType)} · {titleCase(job.status)}
                             </p>
+                            {isOwner && job.editHistory?.length > 0 ? <span className="mt-1 mr-2 inline-block border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-900">Edited</span> : null}
                             {isOwner ? (
                               <span
                                 className={`mt-1 inline-block border px-2 py-0.5 text-xs font-semibold ${

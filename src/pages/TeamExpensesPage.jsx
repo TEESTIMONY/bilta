@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ChevronLeft, ChevronRight, Trash2 } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
-import StaffCountBreakdown from '../components/StaffCountBreakdown'
+import ShopCountBreakdown from '../components/ShopCountBreakdown'
 import TeamNavbar from '../components/TeamNavbar'
 import TeamPageHeader from '../components/TeamPageHeader'
 import { useAuth } from '../context/authContext'
@@ -19,7 +19,7 @@ import {
 const inputClass =
   'mt-1 w-full min-h-[44px] border border-slate-300 bg-white px-3 text-[15px] outline-none transition focus:border-navy'
 
-const emptyExpense = { category: 'fuel', description: '', amount: '' }
+const emptyExpense = { category: 'fuel', description: '', amount: '', paidFromTakings: true }
 
 function formatCurrency(value) {
   return new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 }).format(
@@ -73,10 +73,9 @@ function dayLabel(key, options = { weekday: 'short', day: 'numeric', month: 'sho
 
 function TeamExpensesPage() {
   const { isOwner } = useAuth()
-  // ?date=YYYY-MM-DD&staff=<id> opens a day with one person's count already expanded (from Reports).
+  // ?date=YYYY-MM-DD opens the shop count for a day.
   const [searchParams] = useSearchParams()
   const linkedDay = /^\d{4}-\d{2}-\d{2}$/.test(searchParams.get('date') || '') ? searchParams.get('date') : null
-  const linkedStaff = searchParams.get('staff') ? Number(searchParams.get('staff')) : null
   const [view, setView] = useState('day')
   const [selectedDay, setSelectedDay] = useState(linkedDay || todayKey())
   const [expenses, setExpenses] = useState([])
@@ -145,6 +144,7 @@ function TeamExpensesPage() {
         category: form.category,
         description: form.description.trim(),
         amount: form.amount,
+        paidFromTakings: form.paidFromTakings,
       })
       setForm(emptyExpense)
       setMessage(`Expense of ${formatCurrency(form.amount)} saved.`)
@@ -226,6 +226,11 @@ function TeamExpensesPage() {
           />
         </label>
       </div>
+      <label className="mt-3 flex items-center gap-2 text-sm font-semibold text-slate-700">
+        <input type="checkbox" checked={form.paidFromTakings} onChange={(e) => setForm((current) => ({ ...current, paidFromTakings: e.target.checked }))} className="h-4 w-4" />
+        {isToday ? "Paid from today's takings" : "Paid from this day's takings"}
+      </label>
+      <p className="mt-1 text-xs text-slate-500">Uncheck if this expense was paid from other funds, such as the bank or personal money.</p>
       <button type="submit" disabled={saving} className="btn-primary mt-3 min-h-[44px] w-full disabled:opacity-60 sm:w-auto">
         {saving ? 'Saving...' : 'Save expense'}
       </button>
@@ -249,6 +254,7 @@ function TeamExpensesPage() {
                   {isOwner && expense.recordedByName ? ` · ${expense.recordedByName}` : ''}
 
                 </p>
+                <p className="mt-1 text-xs text-slate-500">{expense.paidFromTakings ? 'Paid from shop takings' : 'Paid from other funds'}</p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 <span className="font-bold text-slate-900">{formatCurrency(expense.amount)}</span>
@@ -341,7 +347,7 @@ function TeamExpensesPage() {
               <MoneyStat
                 label="Received"
                 value={totals.received}
-                note={`Staff counts: cash ${formatCurrency(totals.cash)} + transfers ${formatCurrency(totals.transfer)}`}
+                note="All staff and admin payments, including photocopy collections"
               />
               <MoneyStat
                 label="Expenses"
@@ -374,13 +380,12 @@ function TeamExpensesPage() {
                 {expenseList}
               </div>
               {isOwner ? (
-                <StaffCountBreakdown
+                <ShopCountBreakdown
                   key={selectedDay}
                   counts={counts}
                   payments={dayPayments}
                   sessions={daySessions}
                   loading={loading}
-                  initialOpenId={selectedDay === linkedDay ? linkedStaff : null}
                 />
               ) : null}
             </div>
@@ -406,7 +411,7 @@ function TeamExpensesPage() {
                           </span>
                           <span className="col-span-2 text-sm text-slate-600">
                             In {formatCurrency(day.received)} · Out {formatCurrency(day.expenses)}
-                            {day.peopleCounted ? '' : ' · no staff counts'}
+                            {day.countEntered ? '' : ' · no shop count'}
                           </span>
                         </button>
                       </li>

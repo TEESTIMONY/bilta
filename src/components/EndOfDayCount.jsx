@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { getCashCounts, saveCashCount } from '../services/operationsService'
 import { countResult } from '../utils/cashCount'
 
@@ -26,28 +26,28 @@ function todayKey() {
   }).format(new Date())
 }
 
-// End-of-day cash-up on the Today page: the signed-in person enters the cash and transfers
-// they actually collected, and it's checked against what they recorded in the CMS.
-// Staff do a blind count: they enter the money but only the owner sees how it compares.
-function EndOfDayCount({ userId, isOwner = false, refreshKey = 0 }) {
+// Admin enters one combined daily count for the whole shop.
+function EndOfDayCount({ refreshKey = 0 }) {
   const [count, setCount] = useState(null)
   const [editing, setEditing] = useState(false)
   const [form, setForm] = useState({ cash: '', transfer: '', note: '' })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-
-  const load = useCallback(async () => {
-    try {
-      const { counts } = await getCashCounts(todayKey())
-      setCount(counts.find((item) => item.staffId === userId) || null)
-    } catch {
-      setCount(null)
-    }
-  }, [userId])
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    load()
-  }, [load, refreshKey])
+    let active = true
+    setLoading(true)
+    setCount(null)
+    getCashCounts(todayKey()).then(({ counts }) => {
+      if (active) setCount(counts[0] || null)
+    }).catch((loadError) => {
+      if (active) setError(`Could not load counts: ${loadError.message}`)
+    }).finally(() => {
+      if (active) setLoading(false)
+    })
+    return () => { active = false }
+  }, [refreshKey])
 
   function startEditing() {
     setForm({
@@ -62,7 +62,7 @@ function EndOfDayCount({ userId, isOwner = false, refreshKey = 0 }) {
   async function handleSave(e) {
     e.preventDefault()
     if (form.cash === '' && form.transfer === '') {
-      setError('Enter the cash and transfers you collected (use 0 if none).')
+      setError('Enter the total cash and transfers collected by the shop (use 0 if none).')
       return
     }
     if (Number(form.cash) < 0 || Number(form.transfer) < 0) {
@@ -94,26 +94,28 @@ function EndOfDayCount({ userId, isOwner = false, refreshKey = 0 }) {
     <section id="end-of-day" className="mt-5 border border-slate-200 bg-white p-5 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-xl font-extrabold text-navy">End of day count</h2>
+          <h2 className="text-xl font-extrabold text-navy">Shop end of day count</h2>
           <p className="mt-1 text-sm text-slate-600">
             {count
               ? `Counted at ${formatTime(count.updatedAt)}.`
-              : "Before you leave, count all the cash and transfers you collected today, including any money you've already spent."}
+              : "Enter the total cash and transfers collected by the whole shop today, before expenses."}
           </p>
         </div>
         {!editing ? (
           <button
             type="button"
             onClick={startEditing}
+            disabled={loading || saving}
             className={`min-h-[44px] px-4 text-sm font-semibold ${
               count ? 'border border-slate-300 bg-white text-slate-700 hover:border-navy' : 'btn-primary'
             }`}
           >
-            {count ? 'Recount' : 'Count now'}
+            {loading ? 'Loading count...' : count ? 'Recount' : 'Count now'}
           </button>
         ) : null}
       </div>
 
+      {error && !editing ? <p role="alert" className="mt-3 text-sm text-red-700">{error}</p> : null}
       {count && !editing ? (
         <div className="mt-4 space-y-2">
           <p className="text-[15px] text-slate-800">
@@ -121,20 +123,12 @@ function EndOfDayCount({ userId, isOwner = false, refreshKey = 0 }) {
             <span className="font-bold">{formatCurrency(count.transferAmount)}</span> ={' '}
             <span className="font-bold">{formatCurrency(count.countedTotal)}</span>
           </p>
-          {isOwner ? (
-            <>
-              <p className="text-[15px] text-slate-800">
-                Recorded in the CMS: <span className="font-bold">{formatCurrency(count.recordedTotal)}</span>
-              </p>
-              <p className={`border px-3 py-2 text-sm font-semibold ${resultClass}`}>
-                {result.tone === 'ok' ? '✓ Matches the CMS.' : `${result.label}.`}
-              </p>
-            </>
-          ) : (
-            <p className="border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800">
-              ✓ Count saved. The owner will check it. If you counted wrongly, tap Recount.
-            </p>
-          )}
+          <p className="text-[15px] text-slate-800">
+            Recorded in the CMS: <span className="font-bold">{formatCurrency(count.recordedTotal)}</span>
+          </p>
+          <p className={`border px-3 py-2 text-sm font-semibold ${resultClass}`}>
+            {result.tone === 'ok' ? 'Matches the CMS.' : `${result.label}.`}
+          </p>
           {count.note ? <p className="text-sm text-slate-600">Note: {count.note}</p> : null}
         </div>
       ) : null}

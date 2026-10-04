@@ -7,6 +7,7 @@ const teamLinks = [
   { label: 'Records', to: '/team/records' },
   { label: 'Expenses', to: '/team/expenses', ownerOnly: true },
   { label: 'Reports', to: '/team/reports', ownerOnly: true },
+  { label: 'Staff profiles', to: '/team/staff' },
   { label: 'Settings', to: '/team/settings', ownerOnly: true },
   { label: 'Customers', to: '/team/customers' },
   { label: 'Products', to: '/team/products-editor', ownerOnly: true },

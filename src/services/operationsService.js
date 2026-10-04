@@ -126,8 +126,7 @@ export async function getAuditLogsData(date) {
 function normalizeCashCount(item) {
   return {
     ...item,
-    staffId: item?.staff ?? null,
-    staffName: item?.staff_name || '',
+    recordedByName: item?.recorded_by_name || '',
     cashAmount: Number(item?.cash_amount || 0),
     transferAmount: Number(item?.transfer_amount || 0),
     countedTotal: Number(item?.counted_total || 0),
@@ -139,14 +138,14 @@ function normalizeCashCount(item) {
   }
 }
 
-// End-of-day counts for a day (staff get their own; the owner gets everyone's).
+// End-of-day counts are visible only to the owner/admin.
 export async function getCashCounts(date) {
   if (!USE_DJANGO_API) return { counts: [], source: 'disabled' }
   const counts = await fetchAllPages(`${DJANGO_API_BASE}/cash-counts/${dayQuery(date)}`)
   return { counts: counts.map(normalizeCashCount), source: 'django' }
 }
 
-// Saves (or updates) the signed-in person's count for today.
+// Admin saves or updates today's combined shop count.
 export async function saveCashCount({ cashAmount, transferAmount, note }) {
   const saved = await fetchJson(`${DJANGO_API_BASE}/cash-counts/`, {
     method: 'POST',
@@ -174,6 +173,7 @@ function normalizeExpense(item) {
   return {
     ...item,
     amount: Number(item?.amount || 0),
+    paidFromTakings: item?.paid_from_takings !== false,
     categoryLabel: item?.category_label || item?.category || '',
     recordedByName: item?.recorded_by_name || '',
     recordedById: item?.recorded_by ?? null,
@@ -188,7 +188,7 @@ export async function getExpenses(date) {
   return { expenses: expenses.map(normalizeExpense), source: 'django' }
 }
 
-export async function createExpense({ date, category, description, amount }) {
+export async function createExpense({ date, category, description, amount, paidFromTakings = true }) {
   const created = await fetchJson(`${DJANGO_API_BASE}/expenses/`, {
     method: 'POST',
     body: JSON.stringify({
@@ -196,6 +196,7 @@ export async function createExpense({ date, category, description, amount }) {
       category,
       description,
       amount: String(Number(amount)),
+      paid_from_takings: Boolean(paidFromTakings),
     }),
   })
   return normalizeExpense(created)
@@ -205,7 +206,7 @@ export async function deleteExpense(expenseId) {
   await fetchJson(`${DJANGO_API_BASE}/expenses/${expenseId}/`, { method: 'DELETE' })
 }
 
-// Owner only: money in (staff counts) and out (expenses) for each day from start to end.
+// Owner only: recorded collections from all staff/admin and expenses; counts are separate.
 export async function getMoneyStatement(start, end) {
   const data = await fetchJson(
     `${DJANGO_API_BASE}/reports/statement/?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`,
@@ -216,7 +217,7 @@ export async function getMoneyStatement(start, end) {
       date: day.date,
       cash: num(day.cash),
       transfer: num(day.transfer),
-      peopleCounted: Number(day.people_counted || 0),
+      countEntered: Boolean(day.count_entered),
       received: num(day.received),
       expenses: num(day.expenses),
       remaining: num(day.remaining),

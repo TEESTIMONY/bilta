@@ -3,6 +3,7 @@ import { DJANGO_API_BASE, USE_DJANGO_API, fetchAllPages, fetchJson } from './api
 function normalizeOrder(item) {
   return {
     ...item,
+    editHistory: Array.isArray(item?.edit_history) ? item.edit_history : [],
     jobType: item?.job_type || '',
     description: item?.description || '',
     customerName: item?.customer_name || '',
