@@ -132,7 +132,6 @@ function normalizeCashCount(item) {
     transferAmount: Number(item?.transfer_amount || 0),
     countedTotal: Number(item?.counted_total || 0),
     recordedTotal: Number(item?.recorded_total || 0),
-    spentFromTakings: Number(item?.spent_from_takings || 0),
     expectedTotal: Number(item?.expected_total ?? item?.recorded_total ?? 0),
     difference: Number(item?.difference || 0),
     note: item?.note || '',
@@ -176,11 +175,8 @@ function normalizeExpense(item) {
     ...item,
     amount: Number(item?.amount || 0),
     categoryLabel: item?.category_label || item?.category || '',
-    paidFromTakings: Boolean(item?.paid_from_takings),
     recordedByName: item?.recorded_by_name || '',
     recordedById: item?.recorded_by ?? null,
-    paidById: item?.paid_by ?? item?.recorded_by ?? null,
-    paidByName: item?.paid_by_name || item?.recorded_by_name || '',
     createdAt: item?.created_at || '',
   }
 }
@@ -192,7 +188,7 @@ export async function getExpenses(date) {
   return { expenses: expenses.map(normalizeExpense), source: 'django' }
 }
 
-export async function createExpense({ date, category, description, amount, paidFromTakings, paidBy }) {
+export async function createExpense({ date, category, description, amount }) {
   const created = await fetchJson(`${DJANGO_API_BASE}/expenses/`, {
     method: 'POST',
     body: JSON.stringify({
@@ -200,8 +196,6 @@ export async function createExpense({ date, category, description, amount, paidF
       category,
       description,
       amount: String(Number(amount)),
-      paid_from_takings: Boolean(paidFromTakings),
-      ...(paidFromTakings && paidBy ? { paid_by: Number(paidBy) } : {}),
     }),
   })
   return normalizeExpense(created)
@@ -223,7 +217,6 @@ export async function getMoneyStatement(start, end) {
       cash: num(day.cash),
       transfer: num(day.transfer),
       peopleCounted: Number(day.people_counted || 0),
-      spentFromTakings: num(day.spent_from_takings),
       received: num(day.received),
       expenses: num(day.expenses),
       remaining: num(day.remaining),
@@ -231,7 +224,6 @@ export async function getMoneyStatement(start, end) {
     totals: {
       cash: num(data?.totals?.cash),
       transfer: num(data?.totals?.transfer),
-      spentFromTakings: num(data?.totals?.spent_from_takings),
       received: num(data?.totals?.received),
       expenses: num(data?.totals?.expenses),
       remaining: num(data?.totals?.remaining),

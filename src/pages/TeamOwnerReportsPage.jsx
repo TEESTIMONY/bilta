@@ -227,11 +227,7 @@ function TeamOwnerReportsPage() {
         text: `${count.staffName}'s end-of-day count is ${result.label}.`,
         detail: `Cash ${formatCurrency(count.cashAmount)} + transfers ${formatCurrency(count.transferAmount)} = ${formatCurrency(
           count.countedTotal,
-        )}, but the CMS expects ${formatCurrency(count.expectedTotal)}${
-          count.spentFromTakings > 0
-            ? ` (${formatCurrency(count.recordedTotal)} recorded − ${formatCurrency(count.spentFromTakings)} spent from takings)`
-            : ''
-        }.${count.note ? ` Note: ${count.note}` : ''}`,
+        )}, but the CMS recorded ${formatCurrency(count.recordedTotal)}.${count.note ? ` Note: ${count.note}` : ''}`,
         time: formatTime(count.updatedAt),
         link: { label: 'See itemised count', to: `/team/expenses?date=${reportDate}&staff=${count.staffId}` },
       })

@@ -98,7 +98,7 @@ function EndOfDayCount({ userId, isOwner = false, refreshKey = 0 }) {
           <p className="mt-1 text-sm text-slate-600">
             {count
               ? `Counted at ${formatTime(count.updatedAt)}.`
-              : 'Before you leave, count the cash and transfers you collected today.'}
+              : "Before you leave, count all the cash and transfers you collected today, including any money you've already spent."}
           </p>
         </div>
         {!editing ? (
@@ -125,13 +125,6 @@ function EndOfDayCount({ userId, isOwner = false, refreshKey = 0 }) {
             <>
               <p className="text-[15px] text-slate-800">
                 Recorded in the CMS: <span className="font-bold">{formatCurrency(count.recordedTotal)}</span>
-                {count.spentFromTakings > 0 ? (
-                  <>
-                    {' '}
-                    − spent from takings <span className="font-bold">{formatCurrency(count.spentFromTakings)}</span> ={' '}
-                    <span className="font-bold">{formatCurrency(count.expectedTotal)}</span> expected
-                  </>
-                ) : null}
               </p>
               <p className={`border px-3 py-2 text-sm font-semibold ${resultClass}`}>
                 {result.tone === 'ok' ? '✓ Matches the CMS.' : `${result.label}.`}
@@ -150,7 +143,7 @@ function EndOfDayCount({ userId, isOwner = false, refreshKey = 0 }) {
         <form onSubmit={handleSave} className="mt-4 space-y-3">
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="block text-sm font-semibold text-slate-700">
-              Cash collected
+              Cash collected <span className="font-normal text-slate-500">(before expenses)</span>
               <input
                 type="number"
                 min="0"
