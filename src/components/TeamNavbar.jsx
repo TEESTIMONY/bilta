@@ -5,6 +5,7 @@ import { useAuth } from '../context/authContext'
 const teamLinks = [
   { label: 'Today', to: '/team' },
   { label: 'Records', to: '/team/records' },
+  { label: 'Expenses', to: '/team/expenses' },
   { label: 'Reports', to: '/team/reports', ownerOnly: true },
   { label: 'Settings', to: '/team/settings', ownerOnly: true },
   { label: 'Customers', to: '/team/customers' },

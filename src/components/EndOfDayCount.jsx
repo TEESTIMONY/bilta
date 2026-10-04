@@ -122,6 +122,13 @@ function EndOfDayCount({ userId, refreshKey = 0 }) {
           </p>
           <p className="text-[15px] text-slate-800">
             Recorded in the CMS: <span className="font-bold">{formatCurrency(count.recordedTotal)}</span>
+            {count.spentFromTakings > 0 ? (
+              <>
+                {' '}
+                − spent from takings <span className="font-bold">{formatCurrency(count.spentFromTakings)}</span> ={' '}
+                <span className="font-bold">{formatCurrency(count.expectedTotal)}</span> expected
+              </>
+            ) : null}
           </p>
           <p className={`border px-3 py-2 text-sm font-semibold ${resultClass}`}>
             {result.tone === 'ok'
