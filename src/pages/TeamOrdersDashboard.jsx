@@ -673,6 +673,15 @@ function TeamOrdersDashboard() {
                             {order.isOverdue ? (
                               <span className="border border-red-300 bg-red-100 px-2 py-0.5 text-red-700">Overdue</span>
                             ) : null}
+                            {isOwner ? (
+                              order.createdByName ? (
+                                <span className="border border-navy/30 bg-navy/5 px-2 py-0.5 text-navy">
+                                  Added by {order.createdByName}
+                                </span>
+                              ) : (
+                                <span className="border border-violet-300 bg-violet-50 px-2 py-0.5 text-violet-800">Website order</span>
+                              )
+                            ) : null}
                             {isFromEarlierDay ? (
                               <span className="border border-slate-300 bg-slate-100 px-2 py-0.5 text-slate-600">
                                 From {createdDay}

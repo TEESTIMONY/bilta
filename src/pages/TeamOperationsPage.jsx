@@ -493,6 +493,17 @@ function TeamOperationsPage() {
                             <p className="truncate text-sm text-slate-600">
                               {job.description || titleCase(job.jobType)} · {titleCase(job.status)}
                             </p>
+                            {isOwner ? (
+                              <span
+                                className={`mt-1 inline-block border px-2 py-0.5 text-xs font-semibold ${
+                                  job.createdByName
+                                    ? 'border-navy/30 bg-navy/5 text-navy'
+                                    : 'border-violet-300 bg-violet-50 text-violet-800'
+                                }`}
+                              >
+                                {job.createdByName ? `Added by ${job.createdByName}` : 'Website order'}
+                              </span>
+                            ) : null}
                           </div>
                           <div className="shrink-0 text-right">
                             <p className="font-extrabold text-slate-900">{formatCurrency(job.amountDue)}</p>
