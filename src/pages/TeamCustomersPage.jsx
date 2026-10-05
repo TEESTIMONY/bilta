@@ -3,7 +3,7 @@ import { ChevronDown } from 'lucide-react'
 import TeamPageHeader from '../components/TeamPageHeader'
 import TeamNavbar from '../components/TeamNavbar'
 import { useAuth } from '../context/authContext'
-import { createCustomer, getCustomersData } from '../services/customersService'
+import { createCustomer, getCustomersData, updateCustomer } from '../services/customersService'
 
 const defaultForm = {
   full_name: '',
@@ -40,6 +40,9 @@ function TeamCustomersPage() {
   const [status, setStatus] = useState('')
   const [loading, setLoading] = useState(true)
   const [form, setForm] = useState(defaultForm)
+  const [editingId, setEditingId] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const [updatingId, setUpdatingId] = useState(null)
   const [isDirectoryOpen, setIsDirectoryOpen] = useState(false)
   const [visibleDirectoryCount, setVisibleDirectoryCount] = useState(8)
 
@@ -106,6 +109,32 @@ function TeamCustomersPage() {
     setVisibleDirectoryCount(8)
   }, [query])
 
+  function editCustomer(customer) {
+    if (!isOwner) return
+    setEditingId(customer.id)
+    setForm(Object.fromEntries(Object.entries(defaultForm).map(([key, fallback]) => [key, customer[key] ?? fallback])))
+    setStatus('')
+    document.getElementById('customer-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
+  function cancelEdit() {
+    setEditingId(null)
+    setForm(defaultForm)
+    setStatus('')
+  }
+
+  async function toggleFollowUp(customer) {
+    if (!isOwner || updatingId != null) return
+    setUpdatingId(customer.id)
+    try {
+      const updated = await updateCustomer(customer.id, { follow_up_flag: !customer.follow_up_flag })
+      setCustomers((current) => current.map((item) => item.id === updated.id ? updated : item))
+      if (editingId === updated.id) setForm((current) => ({ ...current, follow_up_flag: updated.follow_up_flag }))
+      setStatus(`${updated.full_name}: ${updated.follow_up_flag ? 'marked for follow-up' : 'follow-up completed'}.`)
+    } catch (error) { setStatus(`Could not update follow-up: ${error.message}`) }
+    finally { setUpdatingId(null) }
+  }
+
   async function handleCreate(e) {
     e.preventDefault()
     if (!form.full_name.trim()) {
@@ -113,8 +142,10 @@ function TeamCustomersPage() {
       return
     }
 
+    if (saving || (editingId && !isOwner)) return
+    setSaving(true)
     try {
-      const created = await createCustomer({
+      const payload = {
         ...form,
         full_name: form.full_name.trim(),
         phone: form.phone.trim(),
@@ -122,17 +153,20 @@ function TeamCustomersPage() {
         city: form.city.trim(),
         business_name: form.business_name.trim(),
         notes: form.notes.trim(),
-      })
-      setForm(defaultForm)
+      }
+      const created = editingId ? await updateCustomer(editingId, payload) : await createCustomer(payload)
       if (created.existing) {
         setStatus(`That phone number already belongs to ${created.full_name}, so no new customer was added.`)
         return
       }
-      if (isOwner) setCustomers((current) => [created, ...current])
-      setStatus(`${created.full_name} added.`)
+      if (isOwner) setCustomers((current) => editingId ? current.map((item) => item.id === created.id ? created : item) : [created, ...current])
+      setStatus(`${created.full_name} ${editingId ? 'updated' : 'added'}.`)
+      setForm(defaultForm)
+      setEditingId(null)
     } catch (error) {
-      setStatus(`Could not create customer: ${error.message}`)
-    }
+      const details = error.payload && typeof error.payload === 'object' ? Object.values(error.payload).flat().join(' ') : error.message
+      setStatus(`Could not save customer: ${details}`)
+    } finally { setSaving(false) }
   }
 
   return (
@@ -152,12 +186,12 @@ function TeamCustomersPage() {
           ) : null}
 
           <div className={isOwner ? 'grid gap-6 xl:grid-cols-[1fr_1fr]' : 'mx-auto max-w-2xl'}>
-            <section className="border border-slate-200 bg-white p-5 shadow-sm md:p-6">
+            <section id="customer-form" className="scroll-mt-24 border border-slate-200 bg-white p-5 shadow-sm md:p-6">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-                  New Customer
+                  {editingId ? 'Edit Customer' : 'New Customer'}
                 </p>
-                <h2 className="mt-1 text-2xl font-extrabold text-navy">Add Customer</h2>
+                <h2 className="mt-1 text-2xl font-extrabold text-navy">{editingId ? 'Edit Customer' : 'Add Customer'}</h2>
               </div>
 
               <form onSubmit={handleCreate} className="mt-6 space-y-4">
@@ -259,8 +293,9 @@ function TeamCustomersPage() {
                   Mark this customer for follow-up
                 </label>
 
-                <div className="flex justify-end">
-                  <button className="btn-primary w-full sm:w-auto" type="submit">Save Customer</button>
+                <div className="flex flex-wrap justify-end gap-3">
+                  {editingId ? <button type="button" disabled={saving} onClick={cancelEdit} className="border border-slate-300 px-4 py-2 text-sm font-semibold">Cancel edit</button> : null}
+                  <button disabled={saving} className="btn-primary w-full disabled:opacity-50 sm:w-auto" type="submit">{saving ? 'Saving...' : editingId ? 'Save changes' : 'Save Customer'}</button>
                 </div>
               </form>
             </section>
@@ -330,6 +365,7 @@ function TeamCustomersPage() {
                             </span>
                           ) : null}
                         </div>
+                        <button type="button" disabled={saving} onClick={() => editCustomer(customer)} className="mt-3 min-h-[44px] text-sm font-semibold text-navy underline">Edit customer</button>
                       </div>
                     ))
                   ) : (
@@ -433,6 +469,10 @@ function TeamCustomersPage() {
                               Follow-up flagged
                             </span>
                           ) : null}
+                        </div>
+                        <div className="mt-4 flex flex-wrap gap-3">
+                          <button type="button" disabled={saving} onClick={() => editCustomer(item)} className="min-h-[44px] border border-navy px-3 py-2 text-sm font-semibold text-navy">Edit customer</button>
+                          <button type="button" disabled={updatingId != null} onClick={() => toggleFollowUp(item)} className="min-h-[44px] border border-slate-300 px-3 py-2 text-sm font-semibold disabled:opacity-50">{updatingId === item.id ? 'Saving...' : item.follow_up_flag ? 'Mark follow-up completed' : 'Mark for follow-up'}</button>
                         </div>
                       </article>
                     ))

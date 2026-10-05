@@ -21,3 +21,10 @@ export async function createCustomer(payload) {
   })
   return normalizeCustomer(created)
 }
+
+export async function updateCustomer(id, payload) {
+  const updated = await fetchJson(`${DJANGO_API_BASE}/customers/${id}/`, {
+    method: 'PATCH', body: JSON.stringify(payload),
+  })
+  return normalizeCustomer(updated)
+}

@@ -1,3 +1,4 @@
+import StaffAttendance from '../components/StaffAttendance'
 import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react'
 import { ChevronDown, Plus, Search, X } from 'lucide-react'
 import { Link, useSearchParams } from 'react-router-dom'
@@ -245,9 +246,6 @@ function TeamOrdersDashboard() {
             unitPrice: String(Number(order.unitPrice || 0)),
             amountPaid: String(Number(order.amountPaid || 0)),
             deadline: toDateTimeLocalValue(order.deadline),
-            description: order.description || '',
-            specialInstructions: order.specialInstructions || '',
-            projectScopeNote: order.projectScopeNote || '',
             items: (order.items || []).map((line) => ({ description: line.description, quantity: String(line.quantity), rate: String(line.rate) })),
           },
         ]),
@@ -449,9 +447,6 @@ function TeamOrdersDashboard() {
           payload.unit_price = String(nextUnitPrice)
         }
         payload.amount_paid = String(nextAmountPaid)
-        payload.description = draft.description
-        payload.special_instructions = draft.specialInstructions
-        payload.project_scope_note = draft.projectScopeNote
         if (order.items?.length) {
           if (draft.items.some((line) => !line.description.trim() || !Number.isInteger(Number(line.quantity)) || Number(line.quantity) < 1 || !Number.isFinite(Number(line.rate)) || Number(line.rate) < 0)) {
             setStatusMessage('Each item needs a description, a whole quantity of at least 1, and a non-negative rate.')
@@ -559,6 +554,7 @@ function TeamOrdersDashboard() {
         </TeamPageHeader>
 
         <section className="container-shell py-6">
+        {!isOwner ? <StaffAttendance /> : null}
           {statusMessage ? (
             <div className="mb-5 border border-navy/20 bg-navy/5 px-4 py-3 text-sm text-slate-700 shadow-sm">
               {statusMessage}
@@ -574,12 +570,6 @@ function TeamOrdersDashboard() {
               value={formatCurrency(Number(dailySummary?.total_revenue ?? 0) + Number(dailySummary?.photocopy_revenue ?? 0))}
             />
           </div>
-
-          {isOwner ? (
-            <div className="mt-5">
-              <StaffMoneyBreakdown payments={dayPayments} sessions={daySessions} title="Collected today, by staff" loading={loading} />
-            </div>
-          ) : null}
 
           {showNewJob ? (
             <section id="new-job" className="mt-5 border border-slate-200 bg-white p-5 shadow-sm md:p-6">
@@ -1004,16 +994,6 @@ function TeamOrdersDashboard() {
                         </div>
 
                         <div className="mt-4 space-y-3">
-                          {[
-                            ['description', 'Job description'],
-                            ['specialInstructions', 'Instructions'],
-                            ['projectScopeNote', 'Project details'],
-                          ].map(([field, label]) => (
-                            <label key={field} className="block text-sm font-semibold text-slate-700">
-                              {label}
-                              <textarea value={queueDraft[field] || ''} onChange={(e) => updateQueueEdit(order.id, field, e.target.value)} className="mt-1 w-full border border-slate-300 bg-white p-2" />
-                            </label>
-                          ))}
                           {queueDraft.items?.map((line, index) => (
                             <div key={index} className="grid gap-2 sm:grid-cols-3">
                               {['description', 'quantity', 'rate'].map((field) => (
@@ -1204,6 +1184,12 @@ function TeamOrdersDashboard() {
                 ) : null}
               </div>
           </section>
+
+          {isOwner ? (
+            <div className="mt-5">
+              <StaffMoneyBreakdown payments={dayPayments} sessions={daySessions} title="Collected today, by staff" loading={loading} />
+            </div>
+          ) : null}
 
           {isOwner && user?.id ? (
             <EndOfDayCount

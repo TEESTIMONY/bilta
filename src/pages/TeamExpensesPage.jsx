@@ -352,13 +352,13 @@ function TeamExpensesPage() {
               <MoneyStat
                 label="Expenses"
                 value={totals.expenses}
-                note="Everything spent"
+                note={`From takings ${formatCurrency(totals.expensesFromTakings)} | Other funds ${formatCurrency(totals.expensesFromOtherFunds)}`}
               />
               <MoneyStat
                 label="Remaining"
                 value={totals.remaining}
                 tone={totals.remaining < 0 ? 'bad' : 'good'}
-                note={`Received ${formatCurrency(totals.received)} − expenses ${formatCurrency(totals.expenses)}: the money left`}
+                note={`Received ${formatCurrency(totals.received)} − expenses from takings ${formatCurrency(totals.expensesFromTakings)}: the money left`}
               />
             </div>
           ) : null}
@@ -410,7 +410,7 @@ function TeamExpensesPage() {
                             {formatCurrency(day.remaining)}
                           </span>
                           <span className="col-span-2 text-sm text-slate-600">
-                            In {formatCurrency(day.received)} · Out {formatCurrency(day.expenses)}
+                            In {formatCurrency(day.received)} · From takings {formatCurrency(day.expensesFromTakings)} | Other funds {formatCurrency(day.expensesFromOtherFunds)}
                             {day.countEntered ? '' : ' · no shop count'}
                           </span>
                         </button>

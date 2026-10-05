@@ -220,6 +220,8 @@ export async function getMoneyStatement(start, end) {
       countEntered: Boolean(day.count_entered),
       received: num(day.received),
       expenses: num(day.expenses),
+      expensesFromTakings: num(day.expenses_from_takings),
+      expensesFromOtherFunds: num(day.expenses_from_other_funds),
       remaining: num(day.remaining),
     })),
     totals: {
@@ -227,6 +229,8 @@ export async function getMoneyStatement(start, end) {
       transfer: num(data?.totals?.transfer),
       received: num(data?.totals?.received),
       expenses: num(data?.totals?.expenses),
+      expensesFromTakings: num(data?.totals?.expenses_from_takings),
+      expensesFromOtherFunds: num(data?.totals?.expenses_from_other_funds),
       remaining: num(data?.totals?.remaining),
     },
     byCategory: (data?.expenses_by_category || []).map((row) => ({ ...row, total: num(row.total) })),

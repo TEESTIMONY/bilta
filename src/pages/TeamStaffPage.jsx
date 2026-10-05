@@ -1,3 +1,4 @@
+import StaffAttendance from '../components/StaffAttendance'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import TeamNavbar from '../components/TeamNavbar'
 import TeamPageHeader from '../components/TeamPageHeader'
@@ -59,6 +60,7 @@ function TeamStaffPage() {
   }, [month])
 
   const load = useCallback(async () => {
+    if (!isOwner) { setLoading(false); return }
     setLoading(true)
     try {
       const [people, days] = await Promise.all([getStaffProfiles(), getStaffDailyRecords(start, end)])
@@ -70,7 +72,7 @@ function TeamStaffPage() {
     } finally {
       setLoading(false)
     }
-  }, [start, end])
+  }, [isOwner, start, end])
 
   useEffect(() => { load() }, [load])
 
@@ -138,6 +140,14 @@ function TeamStaffPage() {
   function field(key) {
     return (event) => setProfileDraft((current) => ({ ...current, [key]: event.target.value }))
   }
+
+  if (!isOwner) return (
+    <div className="min-h-screen bg-[#F4F8FC] text-slate-900">
+      <TeamNavbar />
+      <TeamPageHeader title="My attendance" subtitle="Record your arrival and leaving times." />
+      <main className="container-shell py-6"><StaffAttendance /></main>
+    </div>
+  )
 
   return (
     <div className="min-h-screen bg-[#F4F8FC] text-slate-900">

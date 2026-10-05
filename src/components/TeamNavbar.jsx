@@ -7,7 +7,7 @@ const teamLinks = [
   { label: 'Records', to: '/team/records' },
   { label: 'Expenses', to: '/team/expenses', ownerOnly: true },
   { label: 'Reports', to: '/team/reports', ownerOnly: true },
-  { label: 'Staff profiles', to: '/team/staff' },
+  { label: 'Staff profiles', staffLabel: 'Attendance', to: '/team/staff' },
   { label: 'Settings', to: '/team/settings', ownerOnly: true },
   { label: 'Customers', to: '/team/customers' },
   { label: 'Products', to: '/team/products-editor', ownerOnly: true },
@@ -97,7 +97,7 @@ function TeamNavbar() {
                       : 'border-white/20 bg-white/8 text-white hover:border-yellow hover:text-yellow'
                   }`}
                 >
-                  {item.label}
+                  {!isOwner && item.staffLabel ? item.staffLabel : item.label}
                 </Link>
               ))}
             </div>
@@ -143,7 +143,7 @@ function TeamNavbar() {
                     : 'border-white/20 bg-white/8 text-white hover:border-yellow hover:text-yellow'
                 }`}
               >
-                {item.label}
+                {!isOwner && item.staffLabel ? item.staffLabel : item.label}
               </Link>
             ))}
 

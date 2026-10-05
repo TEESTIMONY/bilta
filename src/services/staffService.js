@@ -18,3 +18,11 @@ export function saveStaffDailyRecord(id, fields) {
     method: id ? 'PATCH' : 'POST', body: JSON.stringify(fields),
   })
 }
+
+export function getMyAttendance() {
+  return fetchJson(`${DJANGO_API_BASE}/staff-daily-records/attendance/`)
+}
+
+export function recordMyAttendance(action) {
+  return fetchJson(`${DJANGO_API_BASE}/staff-daily-records/${action}/`, { method: 'POST', body: '{}' })
+}
