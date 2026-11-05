@@ -1,8 +1,10 @@
 import { Suspense, lazy } from 'react'
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import TeamRouteGuard from './components/TeamRouteGuard'
+import { WEB_DESIGN_HOST, WEB_DESIGN_PATH } from './data/webDesign'
 
 const Home = lazy(() => import('./pages/Home'))
+const WebDesign = lazy(() => import('./pages/WebDesign'))
 const About = lazy(() => import('./pages/About'))
 const Products = lazy(() => import('./pages/Products'))
 const ProductDetails = lazy(() => import('./pages/ProductDetails'))
@@ -29,6 +31,7 @@ const TeamExpensesPage = lazy(() => import('./pages/TeamExpensesPage'))
 const TeamStaffPage = lazy(() => import('./pages/TeamStaffPage'))
 
 const teamEditorEnabled = import.meta.env.VITE_ENABLE_TEAM_EDITOR === 'true'
+const isWebDesignHost = window.location.hostname === WEB_DESIGN_HOST
 
 function App() {
   return (
@@ -41,7 +44,8 @@ function App() {
         }
       >
         <Routes>
-          <Route path="/" element={<Home />} />
+          <Route path="/" element={isWebDesignHost ? <WebDesign /> : <Home />} />
+          <Route path={WEB_DESIGN_PATH} element={<WebDesign />} />
           <Route path="/about" element={<About />} />
           <Route path="/products" element={<Products />} />
           <Route path="/products/:slug" element={<ProductDetails />} />

@@ -1,10 +1,19 @@
-import { ArrowRight, BookOpenText, BriefcaseBusiness, Package, Palette, Printer } from 'lucide-react'
+import { ArrowRight, BookOpenText, BriefcaseBusiness, Globe2, Package, Palette, Printer } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useEffect } from 'react'
 import Navbar from '../components/Navbar'
 import Footer from '../components/Footer'
 
 const categories = [
+  {
+    icon: Globe2,
+    accent: 'from-[#FFF5D3] to-white',
+    title: 'Website Design & Development',
+    body: 'Business websites, online stores and custom experiences that give your next customer a reason to choose you.',
+    includes: ['Business Websites', 'Online Stores', 'Landing Pages', 'Custom Web Applications'],
+    to: '/web-design',
+    cta: 'Explore Web Design →',
+  },
   {
     icon: Printer,
     accent: 'from-[#E8F0FF] to-white',

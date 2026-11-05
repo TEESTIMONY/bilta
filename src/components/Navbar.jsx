@@ -9,6 +9,7 @@ const mainNavItems = [
   { label: 'About', to: '/about' },
   { label: 'Shop', to: '/products' },
   { label: 'Services', to: '/services' },
+  { label: 'Web Design', to: '/web-design' },
   { label: 'Contact', to: '/contact' },
 ]
 

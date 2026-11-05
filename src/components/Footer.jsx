@@ -23,6 +23,7 @@ function Footer() {
             <li>Packaging & Labels</li>
             <li>Event Production</li>
             <li>Book Printing</li>
+            <li><Link to="/web-design" className="transition hover:text-yellow">Website Design & Development</Link></li>
           </ul>
         </div>
 

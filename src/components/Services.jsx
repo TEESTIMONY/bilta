@@ -1,7 +1,15 @@
-import { ArrowRight, BookOpenText, BriefcaseBusiness, Package, Palette, Printer } from 'lucide-react'
+import { ArrowRight, BookOpenText, BriefcaseBusiness, Globe2, Package, Palette, Printer } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
 const serviceItems = [
+  {
+    icon: Globe2,
+    title: 'Website Design & Development',
+    desc: 'Give your business a home online, with a website built around your goals.',
+    includes: ['Business websites', 'Online stores', 'Landing pages', 'Custom web experiences'],
+    cta: 'Explore Web Design',
+    to: '/web-design',
+  },
   {
     icon: Printer,
     title: 'Printing',
